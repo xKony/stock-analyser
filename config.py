@@ -22,11 +22,11 @@ SUBREDDIT_LIST = [
 ]
 """
 
-MIN_SCORE_COMMENT = 10  # prevent saving comments with low score
-TIMEFRAME = "week"
+MIN_SCORE_COMMENT = 4  # prevent saving comments with low score
+TIMEFRAME = "day"
 
 
 # Logs
-DATA_OUTPUT_DIR = "stock_data"
+DATA_OUTPUT_DIR = "stock_data/raw_json"
 SAVE_LOGS = False
 LOG_LEVEL = "DEBUG"

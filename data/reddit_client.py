@@ -53,9 +53,10 @@ class RedditClient(object):
         for sub_name in SUBREDDIT_LIST:
             log.info(f"Processing subreddit: {sub_name}")
 
-            subreddit_data: list = []
-            posts = self.get_posts(sub_name, sort_by, limit, timeframe)
-
+            subreddit_data: list[dict] = []
+            posts: list[praw.reddit.models.Submission] = self.get_posts(
+                sub_name, sort_by, limit, timeframe
+            )
             for post in posts:
                 comments = self.get_comments(post.id)
 
@@ -63,6 +64,7 @@ class RedditClient(object):
                     "id": post.id,
                     "title": post.title,
                     "score": post.score,
+                    "selftext": post.selftext,
                     "comments": [
                         {"body": c.body, "score": c.score}
                         for c in comments

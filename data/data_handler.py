@@ -49,3 +49,79 @@ class DataHandler:
             log.info(f"Successfully saved {len(posts_data)} posts to {file_path}")
         except IOError as e:
             log.error(f"Failed to write data to {file_path}: {e}")
+
+    def optimize_for_llm(
+        self, post_data: dict, max_comments: int = 15, max_chars: int = 500
+    ) -> str:
+        title: str = post_data.get("title", "").replace("\n", " ")
+        score: str = post_data.get("score", 0)
+        selftext: str = " ".join(post_data.get("selftext", "").strip().split())
+
+        text_block = f"## POST (Score: {score})\nTITLE: {title}\n"
+
+        if selftext:
+            if len(selftext) > 1000:
+                selftext = selftext[:1000] + "...(truncated)"
+            text_block += f"BODY: {selftext}\n"
+
+        text_block += "## COMMENTS\n"
+
+        # 2. Format the Comments
+        # Sort by score descending (just in case they aren't already)
+        # This ensures the LLM reads the "best" comments first
+        comments = post_data.get("comments", [])
+
+        # Filter out comments with no body
+        valid_comments = [c for c in comments if c.get("body")]
+
+        # Take only the top N comments
+        top_comments = valid_comments[:max_comments]
+
+        if not top_comments:
+            text_block += "(No comments)\n"
+
+        for i, comment in enumerate(top_comments, 1):
+            c_score = comment.get("score", 0)
+            c_body = comment.get("body", "").replace("\n", " ")
+
+            if len(c_body) > max_chars:
+                c_body = c_body[:max_chars] + "..."
+
+            # Format: "1. [Score] Comment text"
+            text_block += f"{i}. [{c_score}] {c_body}\n"
+
+        return text_block
+
+    def load_and_process_files(self):
+
+        json_files: list = list(self.output_dir.glob("*.json"))
+
+        if not json_files:
+            log.warning(f"No JSON files found in {self.output_dir}")
+            return
+
+        log.info(f"Found {len(json_files)} files to process.")
+
+        # 2. Iterate through files
+        for file_path in json_files:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = json.load(f)
+
+                # 3. Extract metadata and data
+                subreddit = content.get("meta", {}).get("subreddit", "unknown")
+                posts = content.get("data", [])
+
+                log.info(f"Processing file: {file_path.name} ({len(posts)} posts)")
+
+                # 4. Optimize each post
+                for post in posts:
+                    optimized_text = self.optimize_for_llm(post)
+
+                    # Yield a tuple: (Subreddit Name, Optimized String)
+                    yield subreddit, optimized_text
+
+            except json.JSONDecodeError:
+                log.error(f"Skipping file (invalid JSON): {file_path}")
+            except Exception as e:
+                log.error(f"Error processing {file_path}: {e}")
