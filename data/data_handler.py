@@ -3,20 +3,25 @@ import os
 from datetime import datetime
 from pathlib import Path
 from utils.logger import get_logger
-from config import DATA_OUTPUT_DIR
+from config import DATA_OUTPUT_DIR, LLM_INPUT_DIR
 
 log = get_logger(__name__)
 
 
 class DataHandler:
     def __init__(self):
-        self.output_dir = Path(DATA_OUTPUT_DIR)
+        self.output_dir: Path = Path(DATA_OUTPUT_DIR)
+        self.llm_input_dir: Path = Path(LLM_INPUT_DIR)
         self._ensure_storage_exists()
 
     def _ensure_storage_exists(self):
         try:
+            # Create both directories
             self.output_dir.mkdir(parents=True, exist_ok=True)
-            log.info(f"Data storage directory verified at: {self.output_dir}")
+            self.llm_input_dir.mkdir(parents=True, exist_ok=True)
+            log.info(
+                f"Storage directories verified:\n - Raw: {self.output_dir}\n - LLM: {self.llm_input_dir}"
+            )
         except Exception as e:
             log.error(f"Failed to create storage directory: {e}")
             raise
@@ -30,8 +35,6 @@ class DataHandler:
         filename = f"{subreddit_name}_{timestamp_str}.json"
         file_path = self.output_dir / filename
 
-        # 2. Prepare the final structure (Adding Metadata)
-        # It's good practice to wrap the data with metadata about the scrape.
         payload = {
             "meta": {
                 "subreddit": subreddit_name,
@@ -51,7 +54,7 @@ class DataHandler:
             log.error(f"Failed to write data to {file_path}: {e}")
 
     def optimize_for_llm(
-        self, post_data: dict, max_comments: int = 15, max_chars: int = 500
+        self, post_data: dict, max_comments: int = 5, max_chars: int = 500
     ) -> str:
         title: str = post_data.get("title", "").replace("\n", " ")
         score: str = post_data.get("score", 0)
@@ -92,36 +95,50 @@ class DataHandler:
 
         return text_block
 
-    def load_and_process_files(self):
-
+    def process_files_to_txt(self):
         json_files: list = list(self.output_dir.glob("*.json"))
 
         if not json_files:
             log.warning(f"No JSON files found in {self.output_dir}")
             return
 
-        log.info(f"Found {len(json_files)} files to process.")
+        log.info(f"Found {len(json_files)} JSON files. Beginning conversion to TXT...")
 
-        # 2. Iterate through files
+        # Clear/Create a set to track which subreddits we are processing in this run
+        # (Optional: You might want to delete old txt files here if you want a fresh start)
+
+        processed_count = 0
+
         for file_path in json_files:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = json.load(f)
 
-                # 3. Extract metadata and data
                 subreddit = content.get("meta", {}).get("subreddit", "unknown")
                 posts = content.get("data", [])
 
-                log.info(f"Processing file: {file_path.name} ({len(posts)} posts)")
+                # Define the target TXT file for this subreddit
+                txt_filename = f"{subreddit}_llm_input.txt"
+                txt_path = self.llm_input_dir / txt_filename
 
-                # 4. Optimize each post
-                for post in posts:
-                    optimized_text = self.optimize_for_llm(post)
+                # Open in APPEND mode ('a') so multiple JSONs for the same subreddit
+                # get combined into one big text file.
+                with open(txt_path, "a", encoding="utf-8") as f_out:
+                    for post in posts:
+                        optimized_text = self.optimize_for_llm(post)
 
-                    # Yield a tuple: (Subreddit Name, Optimized String)
-                    yield subreddit, optimized_text
+                        # Write the text block + a separator line
+                        f_out.write(optimized_text)
+                        f_out.write("\n")
+
+                processed_count += 1
+                log.debug(f"Appended {len(posts)} posts to {txt_filename}")
 
             except json.JSONDecodeError:
                 log.error(f"Skipping file (invalid JSON): {file_path}")
             except Exception as e:
                 log.error(f"Error processing {file_path}: {e}")
+
+        log.info(
+            f"Finished processing {processed_count} files. Check {self.llm_input_dir} for output."
+        )

@@ -2,7 +2,14 @@ import praw
 import os
 from dotenv import load_dotenv
 from utils.logger import get_logger
-from config import COMMENT_LIMIT, SUBREDDIT_LIST, TIMEFRAME, MIN_SCORE_COMMENT
+from config import (
+    COMMENT_LIMIT,
+    SUBREDDIT_LIST,
+    SUBREDDIT_FLAIRS,
+    TIMEFRAME,
+    MIN_SCORE_COMMENT,
+    MIN_COMMENT_LENGTH,
+)
 
 load_dotenv()
 log = get_logger(__name__)
@@ -52,24 +59,34 @@ class RedditClient(object):
 
         for sub_name in SUBREDDIT_LIST:
             log.info(f"Processing subreddit: {sub_name}")
+            allowed_flairs = SUBREDDIT_FLAIRS.get(sub_name, tuple())
+            posts = self.get_posts(sub_name, sort_by, limit, timeframe)
+            subreddit_data = []
 
-            subreddit_data: list[dict] = []
-            posts: list[praw.reddit.models.Submission] = self.get_posts(
-                sub_name, sort_by, limit, timeframe
-            )
             for post in posts:
-                comments = self.get_comments(post.id)
+                if allowed_flairs:
+                    if not post.link_flair_text:
+                        log.debug(f"Skipping Post '{post.title}' (No Flair)")
+                        continue
 
+                    if post.link_flair_text not in allowed_flairs:
+                        log.debug(
+                            f"Skipping Post '{post.title}' (Flair: {post.link_flair_text} not in allowed list)"
+                        )
+                        continue
+                comments = self.get_comments(post.id)
                 post_data = {
                     "id": post.id,
                     "title": post.title,
                     "score": post.score,
+                    "flair": post.link_flair_text,
                     "selftext": post.selftext,
                     "comments": [
                         {"body": c.body, "score": c.score}
                         for c in comments
                         if hasattr(c, "body")
                         if c.score >= MIN_SCORE_COMMENT
+                        if len(c.body) >= MIN_COMMENT_LENGTH
                     ],
                 }
                 subreddit_data.append(post_data)
