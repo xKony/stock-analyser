@@ -1,6 +1,8 @@
 import asyncio
 import os
 import argparse
+import shutil
+import random
 import pandas as pd
 from pathlib import Path
 from typing import List
@@ -8,31 +10,41 @@ from typing import List
 from data.reddit_client import RedditClient
 from data.data_handler import DataHandler
 from LLM.mistral_client import Mistral_Client
-from config import LLM_INPUT_DIR, LLM_OUTPUT_DIR, SENTIMENT_ANALYSIS_OUTPUT_PATH
+from config import (
+    LLM_INPUT_DIR, 
+    LLM_OUTPUT_DIR, 
+    SENTIMENT_ANALYSIS_OUTPUT_PATH, 
+    KEEP_LLM_INPUT, 
+    KEEP_LLM_OUTPUT,
+    SUBREDDIT_LIST
+)
 from utils.logger import get_logger
 from utils.csv_parser import parse_llm_output_to_csv
 
 log = get_logger(__name__)
 
-def get_subreddit_data() -> None:
+async def get_subreddit_data(subreddits: List[str] = None) -> None:
     """
     Scrapes data from subreddits and processes it into text files.
     """
     reddit_client = RedditClient()
     data_handler = DataHandler()
     
-    # Process subreddits
-    for sub_name, data in reddit_client.process_all_subreddits(
-        sort_by="top", limit=20
-    ):
-        data_handler.save_subreddit_data(sub_name, data)
+    try:
+        # Process subreddits
+        async for sub_name, data in reddit_client.process_all_subreddits(
+            sort_by="top", limit=20, subreddits=subreddits
+        ):
+            data_handler.save_subreddit_data(sub_name, data)
+    finally:
+        await reddit_client.close()
         
     # Convert JSON to TXT for LLM
     data_handler.process_files_to_txt()
 
 
 async def process_input_file(
-    file_path: Path, client: Mistral_Client, output_dir: Path
+    file_path: Path, client: Mistral_Client, output_dir: Path, platform_name: str = "Other"
 ) -> List[pd.DataFrame]:
     """
     Reads a single input file, sends it to the LLM, parses the result.
@@ -58,7 +70,7 @@ async def process_input_file(
             if df is not None and not df.empty:
                 # Add metadata (optional but helpful)
                 df['created_at'] = pd.Timestamp.now()
-                df['platform'] = 'Reddit' # Could be extracted from filename if needed
+                df['Platform'] = platform_name
                 
                 results.append(df)
                 
@@ -79,7 +91,7 @@ async def process_input_file(
     return results
 
 
-async def run_full_pipeline() -> None:
+async def run_full_pipeline(test_subreddit: str = None) -> None:
     """
     Runs the full pipeline: Scrape -> Processing -> LLM -> CSV.
     """
@@ -88,7 +100,8 @@ async def run_full_pipeline() -> None:
     # 1. Scrape (Blocking to ensure data is ready)
     log.info("Phase 1: Fetching Reddit Data...")
     try:
-        get_subreddit_data()
+        subreddits = [test_subreddit] if test_subreddit else None
+        await get_subreddit_data(subreddits=subreddits)
     except Exception as e:
         log.error(f"Error during data fetching: {e}")
         return
@@ -114,9 +127,13 @@ async def run_full_pipeline() -> None:
         log.critical(f"Failed to initialize Mistral Client: {e}")
         return
 
+    # Determine platform source
+    # Since we are running the full pipeline using RedditClient, we use its defined source name.
+    current_platform = getattr(RedditClient, "SOURCE_NAME", "Other")
+
     all_dfs = []
     for file_path in txt_files:
-        dfs = await process_input_file(file_path, client, output_dir)
+        dfs = await process_input_file(file_path, client, output_dir, platform_name=current_platform)
         all_dfs.extend(dfs)
     
     # 3. Aggregate and Save
@@ -126,6 +143,25 @@ async def run_full_pipeline() -> None:
         log.info(f"Full pipeline complete. Data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
     else:
         log.warning("No data was generated in the pipeline.")
+
+    # 4. Cleanup
+    if not KEEP_LLM_INPUT:
+        log.info(f"Cleaning up LLM Input directory: {input_dir}")
+        try:
+            for item in input_dir.iterdir():
+                if item.is_file():
+                    item.unlink()
+        except Exception as e:
+            log.error(f"Error cleaning LLM input: {e}")
+
+    if not KEEP_LLM_OUTPUT:
+        log.info(f"Cleaning up LLM Output directory: {output_dir}")
+        try:
+            for item in output_dir.iterdir():
+                if item.is_file():
+                    item.unlink()
+        except Exception as e:
+            log.error(f"Error cleaning LLM output: {e}")
 
 
 def run_parse_only(input_file: str) -> None:
@@ -148,8 +184,8 @@ def run_parse_only(input_file: str) -> None:
              # Add default metadata if missing
              if 'created_at' not in df.columns:
                  df['created_at'] = pd.Timestamp.now()
-             if 'platform' not in df.columns:
-                 df['platform'] = 'Reddit'
+             if 'Platform' not in df.columns:
+                 df['Platform'] = 'Other'
 
              df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
              log.info(f"Parsed data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
@@ -167,13 +203,23 @@ async def async_main() -> None:
         type=str, 
         help="Path to a raw output file to parse. Bypasses scraping and API querying."
     )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run in test mode: Process only one random subreddit."
+    )
     
     args = parser.parse_args()
 
     if args.parse_only:
         run_parse_only(args.parse_only)
     else:
-        await run_full_pipeline()
+        test_subreddit = None
+        if args.test:
+            test_subreddit = random.choice(SUBREDDIT_LIST)
+            log.info(f"Test mode enabled. Selected random subreddit: {test_subreddit}")
+        
+        await run_full_pipeline(test_subreddit=test_subreddit)
 
 
 if __name__ == "__main__":

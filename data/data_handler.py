@@ -114,6 +114,13 @@ class DataHandler:
 
         log.info(f"Processing {len(json_files)} files...")
 
+        # Clean existing TXT files to prevent stale data
+        for txt_file in self.llm_input_dir.glob("*.txt"):
+            try:
+                txt_file.unlink()
+            except OSError as e:
+                log.warning(f"Could not delete stale file {txt_file}: {e}")
+
         merged_file_path = self.llm_input_dir / "FULL_CONTEXT.txt"
 
         if MERGE_LLM_OUTPUT and merged_file_path.exists():

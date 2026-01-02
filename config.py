@@ -6,7 +6,7 @@ from typing import List, Dict, Tuple
 DATA_OUTPUT_DIR = "stock_data/raw_json"  # Raw JSON data from Reddit
 LLM_INPUT_DIR = "stock_data/llm_input"    # Cleaned text files ready for LLM
 LLM_OUTPUT_DIR = "stock_data/llm_output"  # Final analysis CSVs
-SENTIMENT_ANALYSIS_OUTPUT_PATH = "sentiment_analysis.csv" # Path for the aggregated final CSV
+SENTIMENT_ANALYSIS_OUTPUT_PATH = "stock_data/sentiment_analysis.csv" # Path for the aggregated final CSV
 PROMPT_FILE = "LLM/prompts/system_prompt.txt" # Path to system prompt
 
 # ==============================================================================
@@ -16,7 +16,7 @@ DEFAULT_MODEL = "mistral-small-latest"
 
 # Content Optimization
 REMOVE_NON_ASCII = True  # If True, removes emojis/non-English chars to save tokens
-MERGE_LLM_OUTPUT = True  # If True, combines all subreddits into one 'full_context.txt' file
+MERGE_LLM_OUTPUT = False  # If True, combines all subreddits into one 'full_context.txt' file
 
 # ==============================================================================
 # 3. REDDIT SCRAPER CONFIGURATION
@@ -28,7 +28,7 @@ COMMENT_LIMIT = 10       # Max number of top comments to retrieve per post
 # Filtering Quality Control
 MIN_SCORE_COMMENT = 10   # Minimum upvotes for a comment to be included
 MIN_SCORE_POST = 10      # Minimum upvotes for a post to be included
-MIN_COMMENT_LENGTH = 20  # Minimum character length for a comment
+MIN_COMMENT_LENGTH = 30  # Minimum character length for a comment
 
 # Target Subreddits
 SUBREDDIT_LIST: List[str] = [
@@ -65,4 +65,6 @@ SUBREDDIT_FLAIRS: Dict[str, Tuple[str, ...]] = {
 LOG_LEVEL = "DEBUG"
 SAVE_LOGS = False        # Whether to write logs to disk
 KEEP_RAW_JSON = False    # If False, deletes temporary .json files after processing
+KEEP_LLM_INPUT = False   # If False, deletes intermediate .txt files used for LLM input
+KEEP_LLM_OUTPUT = False  # If False, deletes intermediate .csv files from LLM output
 

@@ -3,9 +3,10 @@ from sqlalchemy import create_engine, text
 import os
 import sys
 from pathlib import Path
-from utils.logger import get_logger
 # Add project root to sys.path to allow importing utils
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from utils.logger import get_logger
 
 
 
