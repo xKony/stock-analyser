@@ -3,12 +3,12 @@ import os
 from dotenv import load_dotenv
 from utils.logger import get_logger
 from config import (
-    COMMENT_LIMIT,
     SUBREDDIT_LIST,
     SUBREDDIT_FLAIRS,
     TIMEFRAME,
     MIN_SCORE_COMMENT,
     MIN_COMMENT_LENGTH,
+    MIN_SCORE_POST,
 )
 
 load_dotenv()
@@ -45,7 +45,7 @@ class RedditClient(object):
 
         submission = self.reddit.submission(id=post_id)
 
-        submission.comments.replace_more(limit=COMMENT_LIMIT)
+        submission.comments.replace_more(limit=0)
 
         all_comments: list = submission.comments.list()
 
@@ -72,6 +72,12 @@ class RedditClient(object):
                     if post.link_flair_text not in allowed_flairs:
                         log.debug(
                             f"Skipping Post '{post.title}' (Flair: {post.link_flair_text} not in allowed list)"
+                        )
+                        continue
+
+                    if post.score < MIN_SCORE_POST:
+                        log.debug(
+                            f"Skipping Post '{post.title}' (Score: {post.score} too low)"
                         )
                         continue
                 comments = self.get_comments(post.id)
