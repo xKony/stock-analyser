@@ -110,6 +110,52 @@ class Mistral_Client:
             log.error(f"Failed parsing Mistral response: {e}", exc_info=True)
             return str(response)
 
+    def _validate_csv_output(self, raw_text: str) -> None:
+        """
+        Validates that the output text respects the expected CSV format and constraints.
+        Schema: Symbol, Sentiment_Score, Sentiment_Confidence, Sentiment_Label, Key_Rationale
+        """
+        try:
+            lines = raw_text.strip().splitlines()
+            header_processed = False
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Skip header if present (heuristic: check for "Sentiment_Confidence" string)
+                if "Sentiment_Confidence" in line:
+                    header_processed = True
+                    continue
+                
+                parts = [p.strip() for p in line.split(",")]
+                
+                if len(parts) < 5:
+                    log.warning(f"Skipping malformed line (cols={len(parts)}): {line}")
+                    continue
+                
+                # Try to parse numeric fields
+                # Symbol, Score, Confidence, Label, Rationale
+                # parts[1] -> Score
+                # parts[2] -> Confidence
+                
+                try:
+                    score = float(parts[1])
+                    if not (-1.0 <= score <= 1.0):
+                        log.warning(f"Sentiment Score out of range: {score} in line: {line}")
+                        
+                    confidence = float(parts[2])
+                    if not (0.0 <= confidence <= 1.0):
+                        log.warning(f"Sentiment Confidence out of range: {confidence} in line: {line}")
+                        
+                except ValueError:
+                     # This might happen if LLM outputs extra text or fails to format strictly
+                     log.warning(f"Failed to parse numeric values in line: {line}")
+
+        except Exception as e:
+            log.error(f"Error validating CSV output: {e}")
+
     async def get_response(self, input_text: str):
         log.info("Starting response generation sequence...")
 
@@ -127,6 +173,9 @@ class Mistral_Client:
             content_str = self.parse_response(raw)
             if not content_str:
                 return None
+
+            # Validate the CSV (Optional: could enforce it strictly)
+            self._validate_csv_output(content_str)
 
             log.info("Generated Reply successfully.")
             return content_str
