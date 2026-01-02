@@ -6,6 +6,7 @@ from typing import List, Dict, Tuple
 DATA_OUTPUT_DIR = "stock_data/raw_json"  # Raw JSON data from Reddit
 LLM_INPUT_DIR = "stock_data/llm_input"    # Cleaned text files ready for LLM
 LLM_OUTPUT_DIR = "stock_data/llm_output"  # Final analysis CSVs
+SENTIMENT_ANALYSIS_OUTPUT_PATH = "sentiment_analysis.csv" # Path for the aggregated final CSV
 PROMPT_FILE = "LLM/prompts/system_prompt.txt" # Path to system prompt
 
 # ==============================================================================

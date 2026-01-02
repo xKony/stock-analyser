@@ -213,9 +213,9 @@ Failures must be handled gracefully and visibly. Silencing errors is strictly fo
 **Rule:** Never use a bare `except:` clause. Catch specific exceptions.
 
 ```python
-import logging
+from utils.logger import get_logger()
 
-logger = logging.getLogger(__name__)
+log = get_logger()
 
 # BAD
 try:
@@ -227,14 +227,14 @@ except:
 try:
     data = load_json()
 except (ValueError, FileNotFoundError) as e:
-    logger.error(f"Failed to load configuration: {e}")
+    log.error(f"Failed to load configuration: {e}")
     raise  # Re-raise if the application cannot recover
 
 ```
 
 ### 5.2 Logging
 
-**Rule:** Log logic should reside close to the source of the error to capture context (local variables, state). Use structured logging where possible. Add debugging whenever possible to easily catch errors.
+**Rule:** Log logic should reside close to the source of the error to capture context (local variables, state). Use structured logging where possible. Add debugging whenever possible to easily catch errors. Always use the logger from utils.logger.
 
 ---
 

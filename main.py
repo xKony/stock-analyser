@@ -1,16 +1,18 @@
 import asyncio
 import os
+import argparse
+import pandas as pd
 from pathlib import Path
 from typing import List
 
 from data.reddit_client import RedditClient
 from data.data_handler import DataHandler
 from LLM.mistral_client import Mistral_Client
-from config import LLM_INPUT_DIR, LLM_OUTPUT_DIR
+from config import LLM_INPUT_DIR, LLM_OUTPUT_DIR, SENTIMENT_ANALYSIS_OUTPUT_PATH
 from utils.logger import get_logger
+from utils.csv_parser import parse_llm_output_to_csv
 
 log = get_logger(__name__)
-
 
 def get_subreddit_data() -> None:
     """
@@ -31,10 +33,12 @@ def get_subreddit_data() -> None:
 
 async def process_input_file(
     file_path: Path, client: Mistral_Client, output_dir: Path
-) -> None:
+) -> List[pd.DataFrame]:
     """
-    Reads a single input file, sends it to the LLM, and saves the result.
+    Reads a single input file, sends it to the LLM, parses the result.
+    Returns a list containing the dataframe if successful, else empty.
     """
+    results = []
     try:
         log.info(f"Processing file: {file_path.name}")
         
@@ -43,33 +47,58 @@ async def process_input_file(
 
         if not content:
             log.warning(f"File {file_path.name} is empty. Skipping.")
-            return
+            return results
 
         response = await client.get_response(content)
         
         if response:
-            output_file = output_dir / f"{file_path.stem}_analysis.csv"
-            with open(output_file, "w", encoding="utf-8") as f_out:
-                f_out.write(response)
-            log.info(f"Saved analysis to: {output_file}")
+            # Parse the response
+            df = parse_llm_output_to_csv(response)
+            
+            if df is not None and not df.empty:
+                # Add metadata (optional but helpful)
+                df['created_at'] = pd.Timestamp.now()
+                df['platform'] = 'Reddit' # Could be extracted from filename if needed
+                
+                results.append(df)
+                
+                # Save individual raw output/analysis if needed (optional based on updated requirement, 
+                # but good for debugging/traceability)
+                output_file = output_dir / f"{file_path.stem}_analysis.csv"
+                df.to_csv(output_file, index=False)
+                log.info(f"Saved individual analysis to: {output_file}")
+            else:
+                 log.warning(f"Failed to parse response for {file_path.name}")
+
         else:
             log.error(f"No response received for {file_path.name}")
 
     except Exception as e:
         log.error(f"Error processing {file_path.name}: {e}")
+    
+    return results
 
 
-async def run_llm_analysis() -> None:
+async def run_full_pipeline() -> None:
     """
-    Orchestrates the LLM analysis process: finds files, initializes client, runs requests.
+    Runs the full pipeline: Scrape -> Processing -> LLM -> CSV.
     """
+    log.info("Starting Full Pipeline...")
+    
+    # 1. Scrape (Blocking to ensure data is ready)
+    log.info("Phase 1: Fetching Reddit Data...")
+    try:
+        get_subreddit_data()
+    except Exception as e:
+        log.error(f"Error during data fetching: {e}")
+        return
+
+    # 2. LLM Analysis
+    log.info("Phase 2: Running LLM Analysis...")
     input_dir = Path(LLM_INPUT_DIR)
     output_dir = Path(LLM_OUTPUT_DIR)
-    
-    # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Check inputs
     if not input_dir.exists():
         log.error(f"Input directory not found: {LLM_INPUT_DIR}")
         return
@@ -79,40 +108,72 @@ async def run_llm_analysis() -> None:
         log.warning("No text files found for analysis.")
         return
 
-    # Initialize Client
     try:
         client = Mistral_Client()
     except Exception as e:
         log.critical(f"Failed to initialize Mistral Client: {e}")
         return
 
-    # Process files (could be done concurrently with asyncio.gather if desired)
-    # For now, sequential to respect rate limits potentially, or gather if we want speed.
-    # Let's use sequential for safety unless specified otherwise.
+    all_dfs = []
     for file_path in txt_files:
-        await process_input_file(file_path, client, output_dir)
+        dfs = await process_input_file(file_path, client, output_dir)
+        all_dfs.extend(dfs)
+    
+    # 3. Aggregate and Save
+    if all_dfs:
+        final_df = pd.concat(all_dfs, ignore_index=True)
+        final_df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
+        log.info(f"Full pipeline complete. Data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
+    else:
+        log.warning("No data was generated in the pipeline.")
+
+
+def run_parse_only(input_file: str) -> None:
+    """
+    Runs only the parsing logic on a given input file containing raw LLM output.
+    """
+    log.info(f"Running Parse-Only mode on file: {input_file}")
+    
+    if not os.path.exists(input_file):
+        log.error(f"Input file not found: {input_file}")
+        return
+
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            raw_content = f.read()
+        
+        df = parse_llm_output_to_csv(raw_content)
+        
+        if df is not None:
+             # Add default metadata if missing
+             if 'created_at' not in df.columns:
+                 df['created_at'] = pd.Timestamp.now()
+             if 'platform' not in df.columns:
+                 df['platform'] = 'Reddit'
+
+             df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
+             log.info(f"Parsed data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
+        else:
+            log.error("Failed to parse the input file.")
+
+    except Exception as e:
+        log.error(f"Error in parse-only mode: {e}")
 
 
 async def async_main() -> None:
-    """
-    Async entry point for the application.
-    """
-    log.info("Starting application...")
+    parser = argparse.ArgumentParser(description="Stock Sentiment Analysis Pipeline")
+    parser.add_argument(
+        "--parse-only", 
+        type=str, 
+        help="Path to a raw output file to parse. Bypasses scraping and API querying."
+    )
     
-    # 1. Scrape and prepare data (Synchronous blocking call)
-    # We run this in a thread if we wanted true non-blocking, but it's fine here to block.
-    log.info("Phase 1: Fetching Reddit Data...")
-    try:
-        get_subreddit_data()
-    except Exception as e:
-        log.error(f"Error during data fetching: {e}")
-        return
+    args = parser.parse_args()
 
-    # 2. Run LLM Analysis
-    log.info("Phase 2: Running LLM Analysis...")
-    await run_llm_analysis()
-    
-    log.info("Application finished successfully.")
+    if args.parse_only:
+        run_parse_only(args.parse_only)
+    else:
+        await run_full_pipeline()
 
 
 if __name__ == "__main__":
