@@ -12,11 +12,10 @@ CREATE TABLE assets (
 );
 
 CREATE TABLE asset_mentions (
-    mention_id BIGINT GENERATED ALWAYS AS IDENTITY,
+    mention_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     asset_id INT NOT NULL REFERENCES assets(asset_id),
     platform_id SMALLINT REFERENCES platforms(platform_id),
     sentiment_score NUMERIC(5, 4), 
     confidence_level NUMERIC(5, 4), 
-    created_at TIMESTAMPTZ NOT NULL, 
-    PRIMARY KEY (mention_id, created_at)
-) PARTITION BY RANGE (created_at);
+    created_at TIMESTAMPTZ NOT NULL
+);

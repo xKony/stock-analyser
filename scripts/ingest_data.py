@@ -37,15 +37,28 @@ def ingest_data(file_path):
         log.error(f"Failed to read CSV: {e}")
         return
 
+    # Mapping of CSV columns to internal database field expectations
+    column_mapping = {
+        'ticker': 'ticker',
+        'sentiment_score': 'sentiment_score',
+        'confidence_level': 'confidence_level',
+        'platform': 'platform',
+        'created_at': 'created_at'
+    }
+
     # Normalize columns to lowercase for consistency
     df.columns = [c.lower() for c in df.columns]
     
-    # Check for required columns
-    required_columns = ['ticker', 'sentiment_score', 'confidence_level', 'platform', 'created_at']
+    # Check for required columns based on our mapping
+    required_columns = list(column_mapping.keys())
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         log.error(f"Missing required columns in CSV: {missing_columns}")
+        log.info(f"Columns available: {list(df.columns)}")
         return
+
+    # Rename columns to match database expectations
+    df = df.rename(columns=column_mapping)
 
     engine = get_engine()
     
@@ -122,6 +135,5 @@ def ingest_data(file_path):
         log.info("Data ingestion complete!")
 
 if __name__ == "__main__":
-    # Default file path
-    default_csv = 'sentiment_analysis.csv'
-    ingest_data(default_csv)
+    from config import SENTIMENT_ANALYSIS_OUTPUT_PATH
+    ingest_data(SENTIMENT_ANALYSIS_OUTPUT_PATH)
