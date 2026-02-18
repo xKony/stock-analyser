@@ -77,6 +77,18 @@ When a user asks you to build a UI:
 4.  **Compose**: Assemble the page using Grid/Flexbox.
 5.  **Polish**: Add Framer Motion `initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}` to entrance.
 
+## ✅ Verification & Testing (MANDATORY)
+
+After writing any code or components, you **MUST** verify it works:
+
+1.  **Build Check**: Run `npm run build` or `npm run dev` (if in a web project) to ensure no syntax/type errors.
+2.  **Console Check**: Check terminal output for runtime errors.
+3.  **Visual Verification**:
+    - Does the component render?
+    - Are animations smooth (60fps)?
+    - Is it responsive on mobile?
+4.  **Self-Correction**: If it fails, **FIX IT** immediately. Do not say "I have updated the code" if it's broken.
+
 ## ❌ Anti-Patterns (DO NOT DO)
 
 - **Native Scrollbars**: Always style scrollbars to be thin and dark matching the theme.

@@ -39,8 +39,10 @@ def parse_llm_json_to_df(data: List[Dict]) -> Optional[pd.DataFrame]:
         
         df = df.rename(columns=column_map)
         
-        # Drop rows with critical NaNs
-        df = df.dropna(subset=["Sentiment_Score", "Sentiment_Confidence"])
+        # Drop rows with critical NaNs if columns exist
+        cols_to_check = [c for c in ["Sentiment_Score", "Sentiment_Confidence"] if c in df.columns]
+        if cols_to_check:
+            df = df.dropna(subset=cols_to_check)
         
         return df
 

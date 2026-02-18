@@ -44,10 +44,18 @@ class RateLimiter:
         except Exception as e:
             log.error(f"Failed to load rate limit state: {e}")
 
-    def _save_state(self):
-        """Saves the daily usage state to the JSON file."""
+    async def _save_state_async(self):
+        """Saves the daily usage state to the JSON file asynchronously."""
+        # Run the synchronous file I/O in a separate thread
+        await asyncio.to_thread(self._save_state_sync)
+
+    def _save_state_sync(self):
+        """Synchronous save logic."""
         data = {}
         # Load existing data first to preserve other providers
+        # NOTE: This read-modify-write is a race condition if multiple processes use it, 
+        # but for a single process async loop it's "okay" mostly, though still ideally locked file.
+        # For this refactor we focus on non-blocking.
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, 'r') as f:
@@ -74,7 +82,9 @@ class RateLimiter:
             log.info(f"New day detected ({current_date}). Resetting RPD for {self.provider_name}.")
             self.daily_usage = 0
             self.last_reset_date = current_date
-            self._save_state()
+            # We can't await here easily if called from sync context, but this is called from async check_and_acquire
+            # However, to be safe, we just update memory and let the next save persist it.
+            # Warning: if we crash before save, we lose the reset, but that means we just reset again on restart.
 
     async def check_and_acquire(self):
         """
@@ -97,6 +107,11 @@ class RateLimiter:
 
         if len(self.request_timestamps) >= self.rpm:
             # Calculate wait time
+            if not self.request_timestamps:
+                 # Should not happen if len >= rpm and rpm > 0, but safety check
+                 self.request_timestamps.append(time.time())
+                 return
+
             oldest_timestamp = self.request_timestamps[0]
             wait_time = 60 - (current_time - oldest_timestamp) + 1 # +1 buffer
             
@@ -114,5 +129,8 @@ class RateLimiter:
         # 3. Acquire Slot
         self.request_timestamps.append(time.time())
         self.daily_usage += 1
-        self._save_state()
+        
+        # Save state asynchronously
+        await self._save_state_async()
+        
         log.debug(f"{self.provider_name} request acquired. Daily: {self.daily_usage}/{self.rpd}, RPM: {len(self.request_timestamps)}/{self.rpm}")

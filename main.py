@@ -1,5 +1,6 @@
 import asyncio
 import os
+import json
 import argparse
 import random
 import pandas as pd
@@ -34,10 +35,8 @@ async def _run_scraping_phase(test_subreddit: Optional[str] = None) -> None:
     data_handler = DataHandler()
     
     try:
-        subreddits = [test_subreddit] if test_subreddit else None
-        
         async for sub_name, data in reddit_client.process_all_subreddits(
-            sort_by="top", limit=20, subreddits=subreddits
+            sort_by="top", limit=20, subreddits=[test_subreddit] if test_subreddit else None
         ):
             data_handler.save_subreddit_data(sub_name, data)
             
@@ -50,9 +49,16 @@ async def _run_scraping_phase(test_subreddit: Optional[str] = None) -> None:
         
     try:
         # Convert JSON to JSON-JSON for LLM
-        data_handler.process_files_to_json()
+        # Run heavy synchronous file processing in a separate thread
+        log.info("Processing collected data files...")
+        await asyncio.to_thread(data_handler.process_files_to_json)
     except Exception as e:
         log.error(f"Error processing files to JSON: {e}")
+
+def _read_file_sync(file_path: Path) -> str:
+    """Helper for reading file synchronously."""
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read()
 
 async def process_input_file(
     file_path: Path, client: "Any", output_dir: Path, platform_name: str = "Other"
@@ -65,14 +71,18 @@ async def process_input_file(
     try:
         log.info(f"Processing file: {file_path.name}")
         
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
+        # Use asyncio.to_thread to make file reading non-blocking
+        try:
+             content = await asyncio.to_thread(_read_file_sync, file_path)
+        except Exception as e:
+             log.error(f"Failed to read file {file_path.name}: {e}")
+             return results
 
         if not content:
             log.warning(f"File {file_path.name} is empty. Skipping.")
             return results
 
-        # MistralClient now returns a List[Dict] (or None)
+        # MistralClient/GeminiClient now returns a List[Dict] (or None)
         json_data = await client.get_response(content)
         
         if json_data:
@@ -86,7 +96,8 @@ async def process_input_file(
                 
                 # Save individual analysis for debugging
                 output_file = output_dir / f"{file_path.stem}_analysis.csv"
-                df.to_csv(output_file, index=False)
+                # DataFrame.to_csv is also blocking, offload it
+                await asyncio.to_thread(df.to_csv, output_file, index=False)
                 log.info(f"Saved individual analysis to: {output_file}")
             else:
                  log.warning(f"Failed to convert data to DataFrame for {file_path.name}")
@@ -121,7 +132,6 @@ async def _run_llm_analysis_phase(input_dir: Path, output_dir: Path) -> List[pd.
     current_platform = getattr(RedditClient, "SOURCE_NAME", "Other")
 
     all_dfs = []
-    all_dfs = []
     for file_path in json_files:
         dfs = await process_input_file(file_path, client, output_dir, platform_name=current_platform)
         all_dfs.extend(dfs)
@@ -131,7 +141,7 @@ async def _run_llm_analysis_phase(input_dir: Path, output_dir: Path) -> List[pd.
 
 def _cleanup_directories(input_dir: Path, output_dir: Path) -> None:
     """Handles cleanup of temporary directories."""
-    if not KEEP_LLM_INPUT:
+    if not KEEP_LLM_INPUT and input_dir.exists():
         log.info(f"Cleaning up LLM Input directory: {input_dir}")
         try:
             for item in input_dir.iterdir():
@@ -140,7 +150,7 @@ def _cleanup_directories(input_dir: Path, output_dir: Path) -> None:
         except Exception as e:
             log.error(f"Error cleaning LLM input: {e}")
 
-    if not KEEP_LLM_OUTPUT:
+    if not KEEP_LLM_OUTPUT and output_dir.exists():
         log.info(f"Cleaning up LLM Output directory: {output_dir}")
         try:
             for item in output_dir.iterdir():
@@ -171,6 +181,26 @@ async def run_full_pipeline(test_subreddit: Optional[str] = None) -> None:
         final_df = pd.concat(all_dfs, ignore_index=True)
         final_df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
         log.info(f"Full pipeline complete. Data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
+        
+        # 4. Insert into Supabase
+        try:
+            from database.supabase_client import SupabaseClient
+            db_client = SupabaseClient()
+            
+            # Convert DataFrame to list of dicts for insertion
+            # We need to ensure types are compatible (numpy types to python types)
+            records = final_df.to_dict(orient='records')
+            
+            # Identify platform source (defaulting to Reddit for now as main.py is reddit-centric)
+            # ideally this should come from the data or context
+            platform_name = getattr(RedditClient, "SOURCE_NAME", "Reddit")
+            
+            log.info(f"Inserting {len(records)} records into Supabase...")
+            db_client.insert_analysis(records, platform_name)
+            
+        except Exception as e:
+            log.error(f"Failed to insert data into Supabase: {e}")
+
     else:
         log.warning("No data was generated in the pipeline.")
 
@@ -192,7 +222,12 @@ def run_parse_only(input_file: str) -> None:
         with open(input_file, 'r', encoding='utf-8') as f:
             raw_content = f.read()
         
-        df = parse_llm_output_to_csv(raw_content)
+        try:
+            data = json.loads(raw_content)
+            df = parse_llm_json_to_df(data)
+        except json.JSONDecodeError as e:
+            log.error(f"Failed to decode JSON from file: {e}")
+            return
         
         if df is not None:
              if 'created_at' not in df.columns:

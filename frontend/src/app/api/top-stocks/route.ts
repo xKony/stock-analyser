@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 
 export async function GET() {
   try {
-    const result = await query(`
-      SELECT 
-        a.ticker,
-        COUNT(am.mention_id) as mentions,
-        AVG(am.sentiment_score) as avg_sentiment
-      FROM assets a
-      JOIN asset_mentions am ON a.asset_id = am.asset_id
-      GROUP BY a.asset_id, a.ticker
-      ORDER BY mentions DESC
-      LIMIT 5
-    `);
+    const { data, error } = await supabase.rpc("get_top_stocks");
 
-    return NextResponse.json(result.rows);
+    if (error) {
+      console.error("Supabase Error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("Database Error:", error);
+    console.error("Server Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

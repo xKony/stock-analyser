@@ -1,21 +1,19 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 
 export async function GET() {
   try {
-    const assetsCount = await query("SELECT COUNT(*) FROM assets");
-    const mentionsCount = await query("SELECT COUNT(*) FROM asset_mentions");
-    const avgSentiment = await query(
-      "SELECT AVG(sentiment_score) FROM asset_mentions",
-    );
+    const { data, error } = await supabase.rpc("get_dashboard_stats");
 
-    return NextResponse.json({
-      totalAssets: parseInt(assetsCount.rows[0].count),
-      totalMentions: parseInt(mentionsCount.rows[0].count),
-      averageSentiment: parseFloat(avgSentiment.rows[0].avg || "0").toFixed(2),
-    });
+    if (error) {
+      console.error("Supabase Error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // The RPC returns a JSON object directly
+    return NextResponse.json(data);
   } catch (error) {
-    console.error("Database Error:", error);
+    console.error("Server Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 },

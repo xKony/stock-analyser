@@ -14,28 +14,36 @@ PROMPT_FILE = "LLM/prompts/system_prompt.txt" # Path to system prompt
 # ==============================================================================
 # Active Model Selection
 # Options: "mistral", "gemini"
-ACTIVE_MODEL = "gemini"
+ACTIVE_MODEL = "mistral"
 
 LLM_PROVIDERS = {
     "mistral": {
         "model_name": "mistral-small-latest",
         "env_key": "MISTRAL_API_KEY",
-        "rpm": 20,  # Requests per minute
+        "rpm": 10,  # Requests per minute
         "rpd": 1000 # Requests per day
     },
     "gemini": {
-        "model_name": "gemini-2.5-pro",
+        "model_name": "gemini-2.5-flash-lite",
         "env_key": "GEMINI_API_KEY",
         "rpm": 10,   # Free tier approx limit, adjust as needed
-        "rpd": 1000  # Free tier daily limit
+        "rpd": 20  # Free tier daily limit
     }
 }
 
-# Legacy constants for backward compatibility if needed, but we should migrate away
-DEFAULT_MODEL = LLM_PROVIDERS["mistral"]["model_name"]
-DEFAULT_GEMINI_MODEL = LLM_PROVIDERS["gemini"]["model_name"]
+
 
 RATE_LIMIT_STATE_FILE = "logs/rate_limit_state.json"
+
+# ==============================================================================
+# 5. SUPABASE CONFIGURATION
+# ==============================================================================
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # Content Optimization
 REMOVE_NON_ASCII = True  # If True, removes emojis/non-English chars to save tokens
@@ -76,7 +84,7 @@ SUBREDDIT_FLAIRS: Dict[str, Tuple[str, ...]] = {
     ),
     "wallstreetbets": ("DD", "Daily Discussion", "Charts", "Gain", "Loss", "News"),
     "StockMarket": ("News", "Discussion", "Technical Analysis"),
-    "investing": (),  # No specific flair filtering
+    "investing": (),  # No specific flair filtering (fetch all)
     "trading": ("Technical analysis", "Discussion"),
     "dividends": ("Discussion",),
     "ValueInvesting": ("Stock Analysis", "Discussion"),

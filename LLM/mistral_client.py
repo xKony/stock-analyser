@@ -1,48 +1,22 @@
 import os
-import json
-from dotenv import load_dotenv
 from mistralai import Mistral
 from mistralai.models import UserMessage, SystemMessage
-from config import PROMPT_FILE, DEFAULT_MODEL
+from config import LLM_PROVIDERS
 from utils.logger import get_logger
-from typing import Optional
+from typing import Optional, Any
+from LLM.base_llm import BaseLLM
 
-from utils.rate_limiter import RateLimiter
-
-load_dotenv()
 log = get_logger(__name__)
 
 
-def _load_prompt(prompt_path: str = PROMPT_FILE) -> str:
-    log.debug(f"Attempting to load prompt from: {prompt_path}")
-    try:
-        if not os.path.exists(prompt_path):
-            log.error(f"Prompt file not found at path: {prompt_path}")
-            raise FileNotFoundError(f"Prompt file not found: {prompt_path}")
-
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-
-        if not content:
-            log.warning(f"Prompt file exists but is empty: {prompt_path}")
-            return ""
-
-        log.info(f"Successfully loaded prompt ({len(content)} chars)")
-        return content
-
-    except FileNotFoundError:
-        raise
-    except Exception as e:
-        log.error(f"Error loading prompt file: {e}")
-        raise
-
-class MistralClient:
-    def __init__(self, model: str = DEFAULT_MODEL, rpm: int = 60, rpd: int = 1000):
+class MistralClient(BaseLLM):
+    def __init__(self, model: str = LLM_PROVIDERS["mistral"]["model_name"], rpm: int = 60, rpd: int = 1000):
         # Mask API key in logs for security
         api_key: Optional[str] = os.getenv("MISTRAL_API_KEY")
         if not api_key:
             log.error("Environment variable MISTRAL_API_KEY not set.")
-            return
+            raise ValueError("MISTRAL_API_KEY not set")
+            
         masked_key = (
             f"****{api_key[-4:]}"
             if api_key and len(api_key) > 8
@@ -50,30 +24,33 @@ class MistralClient:
         )
         log.debug(f"Initializing Mistral Client. Model: {model}, Key: {masked_key}, RPM: {rpm}, RPD: {rpd}")
 
-        self.client = Mistral(api_key=api_key)
-        self.model = model
-        self.rate_limiter = RateLimiter("mistral", rpm, rpd)
         try:
-            self.system_prompt = _load_prompt()
-        except FileNotFoundError:
-            log.critical("System prompt file missing. Client initialization failed.")
-            raise
+            super().__init__("mistral", model, rpm, rpd)
+            self.client = Mistral(api_key=api_key)
         except Exception as e:
             log.critical(
-                f"Failed to initialize Mistral Client due to prompt loading error: {e}"
+                f"Failed to initialize Mistral Client: {e}"
             )
+            # Re-raise unless it was already raised by super
             raise e
 
         log.info("Mistral Client initialized successfully.")
 
-    async def get_response_raw(self, messages: list):
+    async def _get_response_raw(self, prompt: str) -> Any:
         # Check rate limits
         await self.rate_limiter.check_and_acquire()
 
-        log.info(f"Sending request to Mistral model ({self.model})...")
+        log.info(f"Sending request to Mistral model ({self.model_name})...")
+        
+        # Construct messages with System Instruction
+        messages = [
+            SystemMessage(content=self.system_prompt),
+            UserMessage(content=prompt),
+        ]
+        
         try:
             response = await self.client.chat.complete_async(
-                model=self.model, messages=messages
+                model=self.model_name, messages=messages
             )
             if response is None:
                 log.error("Received None response from Mistral API.")
@@ -86,7 +63,7 @@ class MistralClient:
             log.error(f"Mistral API interaction failed: {e}")
             return None
 
-    def parse_response(self, response) -> Optional[str]:
+    def _parse_response(self, response: Any) -> Optional[str]:
         if response is None:
             log.warning("Cannot parse None response.")
             return None
@@ -120,87 +97,3 @@ class MistralClient:
             log.error(f"Failed parsing Mistral response object: {e}", exc_info=True)
             return None
 
-    def _validate_json_output(self, data: list) -> list:
-        """
-        Validates that the output is a list of dictionaries with required keys.
-        """
-        if not isinstance(data, list):
-            log.warning(f"Expected list of objects, got {type(data)}")
-            return []
-            
-        valid_items = []
-        required_keys = {"symbol", "sentiment_score", "sentiment_confidence", "sentiment_label", "key_rationale"}
-        
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-                
-            # Check keys
-            if not required_keys.issubset(item.keys()):
-                log.warning(f"Skipping item missing keys: {item}")
-                continue
-                
-            # Basic Type/Range Checks
-            try:
-                score = float(item.get("sentiment_score", 0.0))
-                if not (-1.0 <= score <= 1.0):
-                     log.warning(f"Score out of range: {score}")
-                
-                conf = float(item.get("sentiment_confidence", 0.0))
-                if not (0.0 <= conf <= 1.0):
-                     log.warning(f"Confidence out of range: {conf}")
-                     
-                valid_items.append(item)
-            except (ValueError, TypeError):
-                log.warning(f"Invalid numeric values in item: {item}")
-                continue
-                
-        return valid_items
-
-    async def get_response(self, input_text: str):
-        log.info("Starting response generation sequence...")
-
-        # Construct messages with System Instruction
-        messages = [
-            SystemMessage(content=self.system_prompt),
-            UserMessage(content=input_text),
-        ]
-
-        # Call API
-        # Some providers support response_format={"type": "json_object"}. 
-        # Mistral API often supports it. We'll try to add it safely if the library supports it, 
-        # but since we are generic, relying on prompt is key.
-        raw_response = await self.get_response_raw(messages)
-
-        if raw_response:
-            # Extract raw content string
-            content_str = self.parse_response(raw_response)
-            
-            if not content_str:
-                return None
-            
-            # LOG RAW RESPONSE for debugging
-            log.debug(f"RAW LLM RESPONSE:\n{content_str}")
-
-            # Parse JSON
-            try:
-                # remove markdown code fences if present
-                clean_str = content_str.replace("```json", "").replace("```", "").strip()
-                data = json.loads(clean_str)
-                
-                # Validate the structure
-                valid_data = self._validate_json_output(data)
-                
-                log.info(f"Generated and validated {len(valid_data)} items successfully.")
-                return valid_data # Return python list of dicts directly
-                
-            except json.JSONDecodeError as e:
-                log.error(f"Failed to decode JSON from LLM response: {e}")
-                log.debug(f"Failed Content: {content_str}")
-                return None
-            except Exception as e:
-                 log.error(f"Unexpected error during JSON processing: {e}")
-                 return None
-        else:
-            log.error("Response generation failed (No raw response).")
-            return None

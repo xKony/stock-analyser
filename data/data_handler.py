@@ -32,7 +32,7 @@ class DataHandler:
             log.error(f"Failed to create storage directory: {e}")
             raise
 
-    def _clean_text(self, text: str) -> str:
+    def _clean_text(self, text: str, max_length: int = 0) -> str:
         if not text:
             return ""
 
@@ -41,7 +41,12 @@ class DataHandler:
             text = self.ascii_pattern.sub("", text)
 
         # " ".join(split()) is the fastest way to normalize whitespace in Python
-        return " ".join(text.split())
+        cleaned = " ".join(text.split())
+        
+        if max_length > 0 and len(cleaned) > max_length:
+            return cleaned[:max_length] + "..."
+            
+        return cleaned
 
     def save_subreddit_data(self, subreddit_name: str, posts_data: list):
         if not posts_data:
@@ -71,12 +76,10 @@ class DataHandler:
         self, post_data: dict, max_comments: int = COMMENT_LIMIT, max_chars: int = 500
     ) -> dict:
         # Clean inputs
-        title = self._clean_text(post_data.get("title", ""))
-        selftext = self._clean_text(
-            post_data.get("selftext", "") or post_data.get("body", "")
-        )
-        if len(selftext) > 1000:
-             selftext = selftext[:1000] + "..."
+        title = self._clean_text(post_data.get("title") or "")
+        
+        selftext_val = post_data.get("selftext") or post_data.get("body") or ""
+        selftext = self._clean_text(selftext_val, max_length=1000)
 
         comments = post_data.get("comments", [])
         valid_comments = [c for c in comments if c.get("body")]
@@ -84,9 +87,7 @@ class DataHandler:
 
         optimized_comments = []
         for comment in top_comments:
-            c_body = self._clean_text(comment.get("body", ""))
-            if len(c_body) > max_chars:
-                c_body = c_body[:max_chars] + "..."
+            c_body = self._clean_text(comment.get("body", ""), max_length=max_chars)
             
             optimized_comments.append({
                 "body": c_body,
@@ -107,46 +108,58 @@ class DataHandler:
             log.warning(f"No JSON files found in {self.output_dir}")
             return
 
-        log.info(f"Processing {len(json_files)} files...")
+        log.info(f"Scanning {len(json_files)} files for processing...")
 
-        # Clean existing JSON files in input dir to prevent stale data
-        for input_file in self.llm_input_dir.glob("*.json"):
-            try:
-                input_file.unlink()
-            except OSError as e:
-                log.warning(f"Could not delete stale file {input_file}: {e}")
+        # Removed: Cleanup of existing files in input dir (to allow incremental build)
+        # for input_file in self.llm_input_dir.glob("*.json"): ...
 
         merged_file_path = self.llm_input_dir / "FULL_CONTEXT.json"
+        
+        # If merging is enabled, we might need to purge the merged file to rebuild it
+        # Or typically we rebuild it from the incremental files.
+        if MERGE_LLM_OUTPUT:
+             if merged_file_path.exists():
+                 try:
+                     merged_file_path.unlink()
+                 except Exception: 
+                     pass
 
-        if MERGE_LLM_OUTPUT and merged_file_path.exists():
-            try:
-                os.remove(merged_file_path)
-            except OSError:
-                pass
-
+        merged_buffer = []
         processed_count = 0
+        skipped_count = 0
 
         for file_path in json_files:
             try:
+                # 1:1 mapping: stocks_2024.json -> stocks_2024.json in llm_input
+                target_json_path = self.llm_input_dir / file_path.name
+                
+                # Check if already processed
+                if target_json_path.exists() and not MERGE_LLM_OUTPUT:
+                    # If merging is ON, we might need to read it to merge, 
+                    # but if merging is OFF, we can fully skip.
+                    # For now, let's assume if it exists, it's valid.
+                    skipped_count += 1
+                    continue
+
+                # Load Raw Data
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = json.load(f)
 
                 subreddit = content.get("meta", {}).get("subreddit", "unknown")
                 posts = content.get("data", [])
 
-                if MERGE_LLM_OUTPUT:
-                    target_json_path = merged_file_path
-                else:
-                    target_json_path = self.llm_input_dir / f"{subreddit}.json"
-
                 file_buffer = []
-
                 for post in posts:
                     file_buffer.append(self.optimize_for_llm(post))
 
+                if MERGE_LLM_OUTPUT:
+                    merged_buffer.extend(file_buffer)
+                
+                # If NOT merging, or even if merging (to keep individual cache), save the file
+                # Saving individual files allows skipping them next time even if merge is on (we'd just read processed file)
+                # But to keep logic simple for this refactor:
                 if file_buffer:
                     with open(target_json_path, "w", encoding="utf-8") as f_out:
-                        # Dump the whole list as a JSON array
                         json.dump(file_buffer, f_out, ensure_ascii=False, indent=2)
 
                 processed_count += 1
@@ -163,4 +176,9 @@ class DataHandler:
             except Exception as e:
                 log.error(f"Error processing {file_path}: {e}")
 
-        log.info(f"Done. Processed {processed_count} files.")
+        if MERGE_LLM_OUTPUT and merged_buffer:
+             with open(merged_file_path, "w", encoding="utf-8") as f_out:
+                json.dump(merged_buffer, f_out, ensure_ascii=False, indent=2)
+             log.info(f"Merged {len(merged_buffer)} items into {merged_file_path}")
+
+        log.info(f"Processing complete. Processed: {processed_count}, Skipped: {skipped_count}.")
