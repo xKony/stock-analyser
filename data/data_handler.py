@@ -69,43 +69,38 @@ class DataHandler:
 
     def optimize_for_llm(
         self, post_data: dict, max_comments: int = COMMENT_LIMIT, max_chars: int = 500
-    ) -> str:
-        # Clean inputs immediately
+    ) -> dict:
+        # Clean inputs
         title = self._clean_text(post_data.get("title", ""))
-        score = post_data.get("score", 0)
         selftext = self._clean_text(
             post_data.get("selftext", "") or post_data.get("body", "")
         )
-
-        # P: = Post, B: = Body. Using single letters saves tokens vs "## POST"
-        text_block = f"P:[{score}] {title}\n"
-
-        if selftext:
-            if len(selftext) > 1000:
-                selftext = selftext[:1000] + "..."
-            text_block += f"B:{selftext}\n"
-
-        text_block += "C:\n"
+        if len(selftext) > 1000:
+             selftext = selftext[:1000] + "..."
 
         comments = post_data.get("comments", [])
         valid_comments = [c for c in comments if c.get("body")]
         top_comments = valid_comments[:max_comments]
 
-        if not top_comments:
-            text_block += "-\n"
-
+        optimized_comments = []
         for comment in top_comments:
-            c_score = comment.get("score", 0)
             c_body = self._clean_text(comment.get("body", ""))
-
             if len(c_body) > max_chars:
                 c_body = c_body[:max_chars] + "..."
+            
+            optimized_comments.append({
+                "body": c_body,
+                "score": comment.get("score", 0)
+            })
 
-            text_block += f">[{c_score}] {c_body}\n"
+        return {
+            "title": title,
+            "selftext": selftext,
+            "score": post_data.get("score", 0),
+            "comments": optimized_comments
+        }
 
-        return text_block
-
-    def process_files_to_txt(self):
+    def process_files_to_json(self):
         json_files: list = list(self.output_dir.glob("*.json"))
 
         if not json_files:
@@ -114,14 +109,14 @@ class DataHandler:
 
         log.info(f"Processing {len(json_files)} files...")
 
-        # Clean existing TXT files to prevent stale data
-        for txt_file in self.llm_input_dir.glob("*.txt"):
+        # Clean existing JSON files in input dir to prevent stale data
+        for input_file in self.llm_input_dir.glob("*.json"):
             try:
-                txt_file.unlink()
+                input_file.unlink()
             except OSError as e:
-                log.warning(f"Could not delete stale file {txt_file}: {e}")
+                log.warning(f"Could not delete stale file {input_file}: {e}")
 
-        merged_file_path = self.llm_input_dir / "FULL_CONTEXT.txt"
+        merged_file_path = self.llm_input_dir / "FULL_CONTEXT.json"
 
         if MERGE_LLM_OUTPUT and merged_file_path.exists():
             try:
@@ -140,9 +135,9 @@ class DataHandler:
                 posts = content.get("data", [])
 
                 if MERGE_LLM_OUTPUT:
-                    target_txt_path = merged_file_path
+                    target_json_path = merged_file_path
                 else:
-                    target_txt_path = self.llm_input_dir / f"{subreddit}.txt"
+                    target_json_path = self.llm_input_dir / f"{subreddit}.json"
 
                 file_buffer = []
 
@@ -150,8 +145,9 @@ class DataHandler:
                     file_buffer.append(self.optimize_for_llm(post))
 
                 if file_buffer:
-                    with open(target_txt_path, "a", encoding="utf-8") as f_out:
-                        f_out.write("\n".join(file_buffer) + "\n")
+                    with open(target_json_path, "w", encoding="utf-8") as f_out:
+                        # Dump the whole list as a JSON array
+                        json.dump(file_buffer, f_out, ensure_ascii=False, indent=2)
 
                 processed_count += 1
 

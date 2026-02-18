@@ -1,12 +1,11 @@
 import os
 import json
 from dotenv import load_dotenv
-from mistralai import Mistral
-from mistralai.models import UserMessage, SystemMessage
-from config import PROMPT_FILE, DEFAULT_MODEL
+import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from config import PROMPT_FILE, DEFAULT_GEMINI_MODEL
 from utils.logger import get_logger
-from typing import Optional
-
+from typing import Optional, List, Dict, Any
 from utils.rate_limiter import RateLimiter
 
 load_dotenv()
@@ -36,23 +35,27 @@ def _load_prompt(prompt_path: str = PROMPT_FILE) -> str:
         log.error(f"Error loading prompt file: {e}")
         raise
 
-class MistralClient:
-    def __init__(self, model: str = DEFAULT_MODEL, rpm: int = 60, rpd: int = 1000):
+
+class GeminiClient:
+    def __init__(self, model: str = DEFAULT_GEMINI_MODEL, rpm: int = 15, rpd: int = 1500):
         # Mask API key in logs for security
-        api_key: Optional[str] = os.getenv("MISTRAL_API_KEY")
+        api_key: Optional[str] = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            log.error("Environment variable MISTRAL_API_KEY not set.")
+            log.error("Environment variable GEMINI_API_KEY not set.")
             return
+
         masked_key = (
             f"****{api_key[-4:]}"
             if api_key and len(api_key) > 8
             else "INVALID"
         )
-        log.debug(f"Initializing Mistral Client. Model: {model}, Key: {masked_key}, RPM: {rpm}, RPD: {rpd}")
+        log.debug(f"Initializing Gemini Client. Model: {model}, Key: {masked_key}, RPM: {rpm}, RPD: {rpd}")
 
-        self.client = Mistral(api_key=api_key)
-        self.model = model
-        self.rate_limiter = RateLimiter("mistral", rpm, rpd)
+        genai.configure(api_key=api_key)
+        self.model_name = model
+        self.model = genai.GenerativeModel(model_name=model)
+        self.rate_limiter = RateLimiter("gemini", rpm, rpd)
+        
         try:
             self.system_prompt = _load_prompt()
         except FileNotFoundError:
@@ -60,30 +63,47 @@ class MistralClient:
             raise
         except Exception as e:
             log.critical(
-                f"Failed to initialize Mistral Client due to prompt loading error: {e}"
+                f"Failed to initialize Gemini Client due to prompt loading error: {e}"
             )
             raise e
 
-        log.info("Mistral Client initialized successfully.")
+        log.info("Gemini Client initialized successfully.")
 
-    async def get_response_raw(self, messages: list):
-        # Check rate limits
+    async def get_response_raw(self, prompt: str):
+        # Check rate limits before making request
         await self.rate_limiter.check_and_acquire()
-
-        log.info(f"Sending request to Mistral model ({self.model})...")
+        
+        log.info(f"Sending request to Gemini model ({self.model_name})...")
         try:
-            response = await self.client.chat.complete_async(
-                model=self.model, messages=messages
+            # Configure safety settings to be less restrictive for financial analysis content if needed
+            # as market discussions can sometimes trigger false positives
+            safety_settings = {
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            }
+
+            # Prepend the system prompt to the user message
+            full_prompt = f"{self.system_prompt}\n\nUSER INPUT:\n{prompt}"
+            
+            response = await self.model.generate_content_async(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    candidate_count=1,
+                    temperature=0.2, # Low temp for deterministic extraction
+                    response_mime_type="application/json" # Enforce JSON output
+                ),
+                safety_settings=safety_settings
             )
+            
             if response is None:
-                log.error("Received None response from Mistral API.")
+                log.error("Received None response from Gemini API.")
             else:
-                log.debug("Received raw response from Mistral API.")
+                log.debug("Received raw response from Gemini API.")
             return response
         except Exception as e:
-            # MistralAI exception hierarchy is not fully exposed in types here, 
-            # so we keep Exception but log it clearly as an API interaction error.
-            log.error(f"Mistral API interaction failed: {e}")
+            log.error(f"Gemini API interaction failed: {e}")
             return None
 
     def parse_response(self, response) -> Optional[str]:
@@ -91,39 +111,21 @@ class MistralClient:
             log.warning("Cannot parse None response.")
             return None
 
-        content = None
         try:
-            # 1. Try standard object attribute access (Choices)
-            if hasattr(response, "choices"):
-                choices = getattr(response, "choices")
-                if choices:
-                    first = choices[0]
-                    if hasattr(first, "message") and hasattr(first.message, "content"):
-                        content = first.message.content
-                    elif isinstance(first, dict):
-                        content = first.get("message", {}).get("content")
-
-            # 2. Fallback to output_text or text
-            if not content:
-                if hasattr(response, "output_text"):
-                    content = getattr(response, "output_text")
-                elif hasattr(response, "text"):
-                    content = getattr(response, "text")
-
-            # 3. Last resort: String conversion (unlikely to be valid JSON if we fall here)
-            if content is None:
-                content = str(response)
-
-            return content
-
+            return response.text
         except Exception as e:
-            log.error(f"Failed parsing Mistral response object: {e}", exc_info=True)
+            log.error(f"Failed parsing Gemini response object: {e}", exc_info=True)
             return None
 
-    def _validate_json_output(self, data: list) -> list:
+    def _validate_json_output(self, data: Any) -> list:
         """
         Validates that the output is a list of dictionaries with required keys.
         """
+        # Handle case where LLM returns a single object instead of a list
+        if isinstance(data, dict):
+             log.warning("Received single dict, wrapping in list.")
+             data = [data]
+
         if not isinstance(data, list):
             log.warning(f"Expected list of objects, got {type(data)}")
             return []
@@ -157,20 +159,11 @@ class MistralClient:
                 
         return valid_items
 
-    async def get_response(self, input_text: str):
+    async def get_response(self, input_text: str) -> Optional[List[Dict[str, Any]]]:
         log.info("Starting response generation sequence...")
 
-        # Construct messages with System Instruction
-        messages = [
-            SystemMessage(content=self.system_prompt),
-            UserMessage(content=input_text),
-        ]
-
         # Call API
-        # Some providers support response_format={"type": "json_object"}. 
-        # Mistral API often supports it. We'll try to add it safely if the library supports it, 
-        # but since we are generic, relying on prompt is key.
-        raw_response = await self.get_response_raw(messages)
+        raw_response = await self.get_response_raw(input_text)
 
         if raw_response:
             # Extract raw content string
@@ -184,7 +177,7 @@ class MistralClient:
 
             # Parse JSON
             try:
-                # remove markdown code fences if present
+                # remove markdown code fences if present (Gemini might still add them even if JSON mime type is used)
                 clean_str = content_str.replace("```json", "").replace("```", "").strip()
                 data = json.loads(clean_str)
                 

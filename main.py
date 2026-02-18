@@ -1,15 +1,18 @@
 import asyncio
 import os
 import argparse
-import shutil
 import random
 import pandas as pd
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from data.reddit_client import RedditClient
 from data.data_handler import DataHandler
-from LLM.mistral_client import Mistral_Client
+
+from data.reddit_client import RedditClient
+from data.data_handler import DataHandler
+from LLM.factory import get_llm_client
+# MistralClient import removed, now using factory
 from config import (
     LLM_INPUT_DIR, 
     LLM_OUTPUT_DIR, 
@@ -19,32 +22,40 @@ from config import (
     SUBREDDIT_LIST
 )
 from utils.logger import get_logger
-from utils.csv_parser import parse_llm_output_to_csv
+from utils.json_parser import parse_llm_json_to_df
 
 log = get_logger(__name__)
 
-async def get_subreddit_data(subreddits: List[str] = None) -> None:
-    """
-    Scrapes data from subreddits and processes it into text files.
-    """
+
+async def _run_scraping_phase(test_subreddit: Optional[str] = None) -> None:
+    """Handles the Reddit scraping phase."""
+    log.info("Phase 1: Fetching Reddit Data...")
     reddit_client = RedditClient()
     data_handler = DataHandler()
     
     try:
-        # Process subreddits
+        subreddits = [test_subreddit] if test_subreddit else None
+        
         async for sub_name, data in reddit_client.process_all_subreddits(
             sort_by="top", limit=20, subreddits=subreddits
         ):
             data_handler.save_subreddit_data(sub_name, data)
+            
+    except Exception as e:
+        log.error(f"Error during data scraping: {e}")
+        # We might want to re-raise if scraping failure should stop the whole pipeline
+        # For now, we log and return, which might allow partial processing if some data exists
     finally:
         await reddit_client.close()
         
-    # Convert JSON to TXT for LLM
-    data_handler.process_files_to_txt()
-
+    try:
+        # Convert JSON to JSON-JSON for LLM
+        data_handler.process_files_to_json()
+    except Exception as e:
+        log.error(f"Error processing files to JSON: {e}")
 
 async def process_input_file(
-    file_path: Path, client: Mistral_Client, output_dir: Path, platform_name: str = "Other"
+    file_path: Path, client: "Any", output_dir: Path, platform_name: str = "Other"
 ) -> List[pd.DataFrame]:
     """
     Reads a single input file, sends it to the LLM, parses the result.
@@ -61,29 +72,26 @@ async def process_input_file(
             log.warning(f"File {file_path.name} is empty. Skipping.")
             return results
 
-        response = await client.get_response(content)
+        # MistralClient now returns a List[Dict] (or None)
+        json_data = await client.get_response(content)
         
-        if response:
-            # Parse the response
-            df = parse_llm_output_to_csv(response)
+        if json_data:
+            df = parse_llm_json_to_df(json_data)
             
             if df is not None and not df.empty:
-                # Add metadata (optional but helpful)
                 df['created_at'] = pd.Timestamp.now()
                 df['Platform'] = platform_name
                 
                 results.append(df)
                 
-                # Save individual raw output/analysis if needed (optional based on updated requirement, 
-                # but good for debugging/traceability)
+                # Save individual analysis for debugging
                 output_file = output_dir / f"{file_path.stem}_analysis.csv"
                 df.to_csv(output_file, index=False)
                 log.info(f"Saved individual analysis to: {output_file}")
             else:
-                 log.warning(f"Failed to parse response for {file_path.name}")
-
+                 log.warning(f"Failed to convert data to DataFrame for {file_path.name}")
         else:
-            log.error(f"No response received for {file_path.name}")
+            log.error(f"No valid response received for {file_path.name}")
 
     except Exception as e:
         log.error(f"Error processing {file_path.name}: {e}")
@@ -91,60 +99,38 @@ async def process_input_file(
     return results
 
 
-async def run_full_pipeline(test_subreddit: str = None) -> None:
-    """
-    Runs the full pipeline: Scrape -> Processing -> LLM -> CSV.
-    """
-    log.info("Starting Full Pipeline...")
-    
-    # 1. Scrape (Blocking to ensure data is ready)
-    log.info("Phase 1: Fetching Reddit Data...")
-    try:
-        subreddits = [test_subreddit] if test_subreddit else None
-        await get_subreddit_data(subreddits=subreddits)
-    except Exception as e:
-        log.error(f"Error during data fetching: {e}")
-        return
-
-    # 2. LLM Analysis
+async def _run_llm_analysis_phase(input_dir: Path, output_dir: Path) -> List[pd.DataFrame]:
+    """Handles the LLM analysis phase."""
     log.info("Phase 2: Running LLM Analysis...")
-    input_dir = Path(LLM_INPUT_DIR)
-    output_dir = Path(LLM_OUTPUT_DIR)
-    output_dir.mkdir(parents=True, exist_ok=True)
     
     if not input_dir.exists():
-        log.error(f"Input directory not found: {LLM_INPUT_DIR}")
-        return
+        log.error(f"Input directory not found: {input_dir}")
+        return []
 
-    txt_files: List[Path] = list(input_dir.glob("*.txt"))
-    if not txt_files:
-        log.warning("No text files found for analysis.")
-        return
+    json_files: List[Path] = list(input_dir.glob("*.json"))
+    if not json_files:
+        log.warning("No JSON files found for analysis.")
+        return []
 
     try:
-        client = Mistral_Client()
+        client = get_llm_client()
     except Exception as e:
-        log.critical(f"Failed to initialize Mistral Client: {e}")
-        return
+        log.critical(f"Failed to initialize LLM Client: {e}")
+        return []
 
-    # Determine platform source
-    # Since we are running the full pipeline using RedditClient, we use its defined source name.
     current_platform = getattr(RedditClient, "SOURCE_NAME", "Other")
 
     all_dfs = []
-    for file_path in txt_files:
+    all_dfs = []
+    for file_path in json_files:
         dfs = await process_input_file(file_path, client, output_dir, platform_name=current_platform)
         all_dfs.extend(dfs)
     
-    # 3. Aggregate and Save
-    if all_dfs:
-        final_df = pd.concat(all_dfs, ignore_index=True)
-        final_df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
-        log.info(f"Full pipeline complete. Data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
-    else:
-        log.warning("No data was generated in the pipeline.")
+    return all_dfs
 
-    # 4. Cleanup
+
+def _cleanup_directories(input_dir: Path, output_dir: Path) -> None:
+    """Handles cleanup of temporary directories."""
     if not KEEP_LLM_INPUT:
         log.info(f"Cleaning up LLM Input directory: {input_dir}")
         try:
@@ -164,6 +150,34 @@ async def run_full_pipeline(test_subreddit: str = None) -> None:
             log.error(f"Error cleaning LLM output: {e}")
 
 
+async def run_full_pipeline(test_subreddit: Optional[str] = None) -> None:
+    """
+    Orchestrates the full pipeline: Scrape -> Processing -> LLM -> CSV.
+    """
+    log.info("Starting Full Pipeline...")
+    
+    # 1. Scrape
+    await _run_scraping_phase(test_subreddit)
+
+    # 2. LLM Analysis
+    input_dir = Path(LLM_INPUT_DIR)
+    output_dir = Path(LLM_OUTPUT_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    all_dfs = await _run_llm_analysis_phase(input_dir, output_dir)
+    
+    # 3. Aggregate and Save
+    if all_dfs:
+        final_df = pd.concat(all_dfs, ignore_index=True)
+        final_df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
+        log.info(f"Full pipeline complete. Data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
+    else:
+        log.warning("No data was generated in the pipeline.")
+
+    # 4. Cleanup
+    _cleanup_directories(input_dir, output_dir)
+
+
 def run_parse_only(input_file: str) -> None:
     """
     Runs only the parsing logic on a given input file containing raw LLM output.
@@ -181,7 +195,6 @@ def run_parse_only(input_file: str) -> None:
         df = parse_llm_output_to_csv(raw_content)
         
         if df is not None:
-             # Add default metadata if missing
              if 'created_at' not in df.columns:
                  df['created_at'] = pd.Timestamp.now()
              if 'Platform' not in df.columns:

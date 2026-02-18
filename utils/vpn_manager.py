@@ -1,6 +1,7 @@
 import time
 import subprocess
 import platform
+import shutil
 from utils.logger import get_logger
 from nordvpn_switcher_pro import VpnSwitcher
 from nordvpn_switcher_pro.exceptions import NordVpnConnectionError
@@ -25,7 +26,6 @@ class VpnManager:
             max_retries (int): Number of times to retry after a critical error.
             kill_wait_time (int): Seconds to wait after killing the VPN process.
             reconnect_wait_time (int): Seconds to wait before attempting to rotate after a restart.
-            location (str, optional): Specific location/country to rotate to (e.g., 'United States').
         """
         self.max_retries = max_retries
         self.kill_wait_time = kill_wait_time
@@ -103,23 +103,24 @@ class VpnManager:
         self.log.info(f"Killing NordVPN process on {system}...")
 
         if system == "Windows":
-            # /F = Force, /IM = Image Name, /T = Tree (child processes)
+            # taskkill /F /IM nordvpn.exe /T
+            cmd = ["taskkill", "/F", "/IM", "nordvpn.exe", "/T"]
             subprocess.run(
-                "taskkill /F /IM nordvpn.exe /T",
-                shell=True,
+                cmd,
+                shell=False,
                 stderr=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
             )
-            # Run twice just to be sure, as per original logic
+            # Run twice just to be sure
             subprocess.run(
-                "taskkill /F /IM nordvpn.exe /T",
-                shell=True,
+                cmd,
+                shell=False,
                 stderr=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
             )
         elif system == "Linux":
-            subprocess.run("pkill -f nordvpn", shell=True)
+            subprocess.run(["pkill", "-f", "nordvpn"], shell=False)
         elif system == "Darwin":  # macOS
-            subprocess.run("pkill -f NordVPN", shell=True)
+            subprocess.run(["pkill", "-f", "NordVPN"], shell=False)
         else:
             self.log.warning("Unknown Operating System. Skipping process kill.")

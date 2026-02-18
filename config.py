@@ -12,7 +12,30 @@ PROMPT_FILE = "LLM/prompts/system_prompt.txt" # Path to system prompt
 # ==============================================================================
 # 2. LLM CONFIGURATION (Mistral)
 # ==============================================================================
-DEFAULT_MODEL = "mistral-small-latest"
+# Active Model Selection
+# Options: "mistral", "gemini"
+ACTIVE_MODEL = "gemini"
+
+LLM_PROVIDERS = {
+    "mistral": {
+        "model_name": "mistral-small-latest",
+        "env_key": "MISTRAL_API_KEY",
+        "rpm": 20,  # Requests per minute
+        "rpd": 1000 # Requests per day
+    },
+    "gemini": {
+        "model_name": "gemini-2.5-pro",
+        "env_key": "GEMINI_API_KEY",
+        "rpm": 10,   # Free tier approx limit, adjust as needed
+        "rpd": 1000  # Free tier daily limit
+    }
+}
+
+# Legacy constants for backward compatibility if needed, but we should migrate away
+DEFAULT_MODEL = LLM_PROVIDERS["mistral"]["model_name"]
+DEFAULT_GEMINI_MODEL = LLM_PROVIDERS["gemini"]["model_name"]
+
+RATE_LIMIT_STATE_FILE = "logs/rate_limit_state.json"
 
 # Content Optimization
 REMOVE_NON_ASCII = True  # If True, removes emojis/non-English chars to save tokens
@@ -63,8 +86,7 @@ SUBREDDIT_FLAIRS: Dict[str, Tuple[str, ...]] = {
 # 4. APPLICATION SETTINGS
 # ==============================================================================
 LOG_LEVEL = "DEBUG"
-SAVE_LOGS = False        # Whether to write logs to disk
+SAVE_LOGS = True        # Whether to write logs to disk
 KEEP_RAW_JSON = False    # If False, deletes temporary .json files after processing
 KEEP_LLM_INPUT = False   # If False, deletes intermediate .txt files used for LLM input
 KEEP_LLM_OUTPUT = False  # If False, deletes intermediate .csv files from LLM output
-

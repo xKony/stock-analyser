@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, BarChart2, MessageSquare } from "lucide-react";
+import { Activity, BarChart2, MessageSquare, TrendingUp } from "lucide-react";
+import { MetricCard } from "@/components/ui/MetricCard";
 
 interface StatsData {
   totalAssets: number;
   totalMentions: number;
-  averageSentiment: number;
+  averageSentiment: number | string;
 }
 
 export function StatsCards() {
@@ -25,39 +26,27 @@ export function StatsCards() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div className="bg-white p-6 rounded-lg shadow flex items-center">
-        <div className="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
-          <BarChart2 size={24} />
-        </div>
-        <div>
-          <p className="text-gray-500 text-sm">Total Assets</p>
-          <p className="text-2xl font-bold text-gray-800">
-            {stats.totalAssets}
-          </p>
-        </div>
-      </div>
-      <div className="bg-white p-6 rounded-lg shadow flex items-center">
-        <div className="p-3 rounded-full bg-green-100 text-green-600 mr-4">
-          <MessageSquare size={24} />
-        </div>
-        <div>
-          <p className="text-gray-500 text-sm">Total Mentions</p>
-          <p className="text-2xl font-bold text-gray-800">
-            {stats.totalMentions}
-          </p>
-        </div>
-      </div>
-      <div className="bg-white p-6 rounded-lg shadow flex items-center">
-        <div className="p-3 rounded-full bg-purple-100 text-purple-600 mr-4">
-          <Activity size={24} />
-        </div>
-        <div>
-          <p className="text-gray-500 text-sm">Avg Sentiment</p>
-          <p className="text-2xl font-bold text-gray-800">
-            {stats.averageSentiment}
-          </p>
-        </div>
-      </div>
+      <MetricCard
+        title="Total Assets"
+        value={stats.totalAssets.toString()}
+        trend={12.5}
+        icon={BarChart2}
+        className="delay-0"
+      />
+      <MetricCard
+        title="Total Mentions"
+        value={stats.totalMentions.toLocaleString()}
+        trend={8.2}
+        icon={MessageSquare}
+        className="delay-100"
+      />
+      <MetricCard
+        title="Avg Sentiment"
+        value={Number(stats.averageSentiment).toFixed(2)}
+        trend={-2.4}
+        icon={Activity}
+        className="delay-200"
+      />
     </div>
   );
 }
