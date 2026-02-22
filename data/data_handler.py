@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from utils.logger import get_logger
@@ -101,7 +102,44 @@ class DataHandler:
             "comments": optimized_comments
         }
 
-    def process_files_to_json(self):
+    def _process_single_file(self, file_path: Path) -> int:
+        """Process one raw JSON file into an LLM-ready JSON file.
+
+        Returns:
+            1 if the file was processed, 0 if it was skipped (already exists).
+        """
+        target_json_path = self.llm_input_dir / file_path.name
+
+        if target_json_path.exists():
+            log.debug(f"Skipping already-processed file: {file_path.name}")
+            return 0
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = json.load(f)
+
+        posts = content.get("data", [])
+        file_buffer = [self.optimize_for_llm(post) for post in posts]
+
+        if file_buffer:
+            with open(target_json_path, "w", encoding="utf-8") as f_out:
+                json.dump(file_buffer, f_out, ensure_ascii=False, indent=2)
+
+        if not KEEP_RAW_JSON:
+            try:
+                file_path.unlink()
+                log.debug(f"Deleted raw JSON: {file_path.name}")
+            except OSError as e:
+                log.warning(f"Could not delete {file_path.name}: {e}")
+
+        return 1
+
+    def process_files_to_json(self) -> None:
+        """Convert raw JSON files in *output_dir* to LLM-ready JSON files.
+
+        Files are processed in parallel using a :class:`ThreadPoolExecutor`
+        (I/O-bound work). When ``MERGE_LLM_OUTPUT`` is enabled, the merged
+        file is rebuilt from all individual files after processing completes.
+        """
         json_files: list = list(self.output_dir.glob("*.json"))
 
         if not json_files:
@@ -110,75 +148,46 @@ class DataHandler:
 
         log.info(f"Scanning {len(json_files)} files for processing...")
 
-        # Removed: Cleanup of existing files in input dir (to allow incremental build)
-        # for input_file in self.llm_input_dir.glob("*.json"): ...
-
         merged_file_path = self.llm_input_dir / "FULL_CONTEXT.json"
-        
-        # If merging is enabled, we might need to purge the merged file to rebuild it
-        # Or typically we rebuild it from the incremental files.
-        if MERGE_LLM_OUTPUT:
-             if merged_file_path.exists():
-                 try:
-                     merged_file_path.unlink()
-                 except Exception: 
-                     pass
-
-        merged_buffer = []
         processed_count = 0
         skipped_count = 0
 
-        for file_path in json_files:
-            try:
-                # 1:1 mapping: stocks_2024.json -> stocks_2024.json in llm_input
-                target_json_path = self.llm_input_dir / file_path.name
-                
-                # Check if already processed
-                if target_json_path.exists() and not MERGE_LLM_OUTPUT:
-                    # If merging is ON, we might need to read it to merge, 
-                    # but if merging is OFF, we can fully skip.
-                    # For now, let's assume if it exists, it's valid.
-                    skipped_count += 1
-                    continue
+        # Process files in parallel — each is an independent I/O-bound task.
+        with ThreadPoolExecutor() as executor:
+            futures = {executor.submit(self._process_single_file, fp): fp for fp in json_files}
+            for future in as_completed(futures):
+                fp = futures[future]
+                try:
+                    result = future.result()
+                    if result == 1:
+                        processed_count += 1
+                    else:
+                        skipped_count += 1
+                except json.JSONDecodeError:
+                    log.error(f"Skipping invalid JSON: {fp}")
+                except Exception as e:
+                    log.error(f"Error processing {fp}: {e}")
 
-                # Load Raw Data
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = json.load(f)
+        # Rebuild the merged file from ALL individual files so that incremental
+        # runs accumulate history correctly.
+        if MERGE_LLM_OUTPUT:
+            merged_buffer = []
+            all_input_files = [
+                f for f in self.llm_input_dir.glob("*.json")
+                if f.name != merged_file_path.name
+            ]
+            for input_file in all_input_files:
+                try:
+                    with open(input_file, "r", encoding="utf-8") as f:
+                        merged_buffer.extend(json.load(f))
+                except Exception as e:
+                    log.warning(f"Could not read {input_file.name} for merge: {e}")
 
-                subreddit = content.get("meta", {}).get("subreddit", "unknown")
-                posts = content.get("data", [])
-
-                file_buffer = []
-                for post in posts:
-                    file_buffer.append(self.optimize_for_llm(post))
-
-                if MERGE_LLM_OUTPUT:
-                    merged_buffer.extend(file_buffer)
-                
-                # If NOT merging, or even if merging (to keep individual cache), save the file
-                # Saving individual files allows skipping them next time even if merge is on (we'd just read processed file)
-                # But to keep logic simple for this refactor:
-                if file_buffer:
-                    with open(target_json_path, "w", encoding="utf-8") as f_out:
-                        json.dump(file_buffer, f_out, ensure_ascii=False, indent=2)
-
-                processed_count += 1
-
-                if not KEEP_RAW_JSON:
-                    try:
-                        file_path.unlink()
-                        log.debug(f"Deleted raw JSON: {file_path.name}")
-                    except OSError as e:
-                        log.warning(f"Could not delete {file_path.name}: {e}")
-
-            except json.JSONDecodeError:
-                log.error(f"Skipping invalid JSON: {file_path}")
-            except Exception as e:
-                log.error(f"Error processing {file_path}: {e}")
-
-        if MERGE_LLM_OUTPUT and merged_buffer:
-             with open(merged_file_path, "w", encoding="utf-8") as f_out:
-                json.dump(merged_buffer, f_out, ensure_ascii=False, indent=2)
-             log.info(f"Merged {len(merged_buffer)} items into {merged_file_path}")
+            if merged_buffer:
+                with open(merged_file_path, "w", encoding="utf-8") as f_out:
+                    json.dump(merged_buffer, f_out, ensure_ascii=False, indent=2)
+                log.info(
+                    f"Rebuilt merged file with {len(merged_buffer)} total items → {merged_file_path}"
+                )
 
         log.info(f"Processing complete. Processed: {processed_count}, Skipped: {skipped_count}.")

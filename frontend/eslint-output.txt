@@ -1,0 +1,86 @@
+
+F:\portfolio\github\stock-analyser\frontend\src\app\admin\page.tsx
+   8:10  warning  'motion' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            @typescript-eslint/no-unused-vars
+  53:7   error    Error: Cannot access variable before it is declared
+
+`fetchAssets` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+F:\portfolio\github\stock-analyser\frontend\src\app\admin\page.tsx:53:7
+  51 |       }
+  52 |       setAuthorized(true);
+> 53 |       fetchAssets();
+     |       ^^^^^^^^^^^ `fetchAssets` accessed before it is declared
+  54 |     };
+  55 |
+  56 |     checkAuthAndLoad();
+
+F:\portfolio\github\stock-analyser\frontend\src\app\admin\page.tsx:59:3
+  57 |   }, [router]);
+  58 |
+> 59 |   const fetchAssets = async () => {
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 60 |     setLoading(true);
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 61 |     try {
+     ÔÇŽ
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 70 |     setLoading(false);
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 71 |   };
+     | ^^^^^ `fetchAssets` is declared here
+  72 |
+  73 |   const fetchMentions = async () => {
+  74 |     try {  react-hooks/immutability
+
+F:\portfolio\github\stock-analyser\frontend\src\app\api\prices\route.ts
+  21:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  30:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  31:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  40:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  40:61  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  46:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+F:\portfolio\github\stock-analyser\frontend\src\components\Dashboard\SentimentChart.tsx
+  17:19  warning  'TrendingUp' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            @typescript-eslint/no-unused-vars
+  63:6   warning  React Hook useEffect has a missing dependency: 'selectedTicker'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 react-hooks/exhaustive-deps
+  67:5   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+F:\portfolio\github\stock-analyser\frontend\src\components\Dashboard\SentimentChart.tsx:67:5
+  65 |   // Fetch actual data based on selectedTicker and Range
+  66 |   useEffect(() => {
+> 67 |     setLoading(true);
+     |     ^^^^^^^^^^ Avoid calling setState() directly within an effect
+  68 |     let isMounted = true;
+  69 |
+  70 |     async function fetchData() {  react-hooks/set-state-in-effect
+
+F:\portfolio\github\stock-analyser\frontend\src\components\Dashboard\TopStocksTable.tsx
+  40:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+F:\portfolio\github\stock-analyser\frontend\src\components\Dashboard\TopStocksTable.tsx:40:5
+  38 |
+  39 |   useEffect(() => {
+> 40 |     setStocks([
+     |     ^^^^^^^^^ Avoid calling setState() directly within an effect
+  41 |       {
+  42 |         ticker: "NVDA",
+  43 |         name: "NVIDIA Corp",  react-hooks/set-state-in-effect
+
+F:\portfolio\github\stock-analyser\frontend\src\components\layout\Sidebar.tsx
+   5:18  warning  'AnimatePresence' is defined but never used  @typescript-eslint/no-unused-vars
+  12:3   warning  'Menu' is defined but never used             @typescript-eslint/no-unused-vars
+
+Ôťľ 14 problems (9 errors, 5 warnings)
+

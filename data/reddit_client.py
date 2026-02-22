@@ -10,6 +10,7 @@ from config import (
     MIN_SCORE_COMMENT,
     MIN_COMMENT_LENGTH,
     MIN_SCORE_POST,
+    MIN_POST_LENGTH,
 )
 from typing import AsyncGenerator, Dict, Any, List
 
@@ -94,17 +95,17 @@ class RedditClient:
 
             for post in posts:
                 try:
+                    # Quality gates apply to ALL posts, regardless of flair filter.
+                    if post.score < MIN_SCORE_POST:
+                        continue
+
+                    selftext = getattr(post, "selftext", "") or ""
+                    if MIN_POST_LENGTH > 0 and len(selftext) < MIN_POST_LENGTH:
+                        continue
+
                     if allowed_flairs:
-                        # In Async PRAW, we might need to await load() if attributes are missing, but listings usually have them.
                         flair_text = getattr(post, "link_flair_text", None)
-                        
-                        if not flair_text:
-                            continue
-
-                        if flair_text not in allowed_flairs:
-                            continue
-
-                        if post.score < MIN_SCORE_POST:
+                        if not flair_text or flair_text not in allowed_flairs:
                             continue
                             
                     comments = await self.get_comments(post.id)

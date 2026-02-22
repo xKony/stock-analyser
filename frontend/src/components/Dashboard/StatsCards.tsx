@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, BarChart2, MessageSquare, TrendingUp } from "lucide-react";
+import { Activity, BarChart2, MessageSquare } from "lucide-react";
 import { MetricCard } from "@/components/ui/MetricCard";
 
 interface StatsData {
@@ -24,28 +24,37 @@ export function StatsCards() {
       .catch((err) => console.error(err));
   }, []);
 
+  const avgSentiment = Number(stats.averageSentiment);
+  const sentimentTrend = avgSentiment * 100; // scale to percent-like for delta badge
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
       <MetricCard
-        title="Total Assets"
-        value={stats.totalAssets.toString()}
+        title="Total Assets Tracked"
+        value={stats.totalAssets.toLocaleString()}
+        rawValue={stats.totalAssets}
         trend={12.5}
+        trendLabel="across all markets"
         icon={BarChart2}
-        className="delay-0"
+        delay={0}
       />
       <MetricCard
         title="Total Mentions"
         value={stats.totalMentions.toLocaleString()}
+        rawValue={stats.totalMentions}
         trend={8.2}
+        trendLabel="social media posts"
         icon={MessageSquare}
-        className="delay-100"
+        delay={0.07}
       />
       <MetricCard
-        title="Avg Sentiment"
-        value={Number(stats.averageSentiment).toFixed(2)}
-        trend={-2.4}
+        title="Average Sentiment"
+        value={avgSentiment.toFixed(3)}
+        rawValue={avgSentiment}
+        trend={sentimentTrend}
+        trendLabel="overall market mood"
         icon={Activity}
-        className="delay-200"
+        delay={0.14}
       />
     </div>
   );

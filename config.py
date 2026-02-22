@@ -5,8 +5,8 @@ from typing import List, Dict, Tuple
 # ==============================================================================
 DATA_OUTPUT_DIR = "stock_data/raw_json"  # Raw JSON data from Reddit
 LLM_INPUT_DIR = "stock_data/llm_input"    # Cleaned text files ready for LLM
-LLM_OUTPUT_DIR = "stock_data/llm_output"  # Final analysis CSVs
-SENTIMENT_ANALYSIS_OUTPUT_PATH = "stock_data/sentiment_analysis.csv" # Path for the aggregated final CSV
+LLM_OUTPUT_DIR = "stock_data/llm_output"  # Intermediate per-file debug output
+# SENTIMENT_ANALYSIS_OUTPUT_PATH is no longer used — data is written directly to Supabase.
 PROMPT_FILE = "LLM/prompts/system_prompt.txt" # Path to system prompt
 
 # ==============================================================================
@@ -53,13 +53,14 @@ MERGE_LLM_OUTPUT = False  # If True, combines all subreddits into one 'full_cont
 # 3. REDDIT SCRAPER CONFIGURATION
 # ==============================================================================
 # Scoping
-TIMEFRAME = "week"       # Timeframe for "top" posts (hour, day, week, month, year, all)
-COMMENT_LIMIT = 10       # Max number of top comments to retrieve per post
+TIMEFRAME = "day"       # Timeframe for "top" posts (hour, day, week, month, year, all)
+COMMENT_LIMIT = 20       # Max number of top comments to retrieve per post
 
 # Filtering Quality Control
-MIN_SCORE_COMMENT = 10   # Minimum upvotes for a comment to be included
-MIN_SCORE_POST = 10      # Minimum upvotes for a post to be included
+MIN_SCORE_COMMENT = 20   # Minimum upvotes for a comment to be included
+MIN_SCORE_POST = 20      # Minimum upvotes for a post to be included
 MIN_COMMENT_LENGTH = 30  # Minimum character length for a comment
+MIN_POST_LENGTH = 0      # Minimum character length for a post's selftext (0 = no minimum, title-only posts allowed)
 
 # Target Subreddits
 SUBREDDIT_LIST: List[str] = [

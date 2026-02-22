@@ -1,119 +1,105 @@
 import asyncio
-import os
-import json
 import argparse
+import json
 import random
-import pandas as pd
 from pathlib import Path
 from typing import List, Optional
 
-from data.reddit_client import RedditClient
 from data.data_handler import DataHandler
-
+from data.models import SentimentRecord
 from data.reddit_client import RedditClient
-from data.data_handler import DataHandler
+from database.supabase_client import SupabaseClient
+from LLM.base_llm import validate_stock_sentiment_json
 from LLM.factory import get_llm_client
-# MistralClient import removed, now using factory
 from config import (
-    LLM_INPUT_DIR, 
-    LLM_OUTPUT_DIR, 
-    SENTIMENT_ANALYSIS_OUTPUT_PATH, 
-    KEEP_LLM_INPUT, 
+    KEEP_LLM_INPUT,
     KEEP_LLM_OUTPUT,
-    SUBREDDIT_LIST
+    LLM_INPUT_DIR,
+    LLM_OUTPUT_DIR,
+    SUBREDDIT_LIST,
 )
 from utils.logger import get_logger
-from utils.json_parser import parse_llm_json_to_df
 
 log = get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Pipeline phases
+# ---------------------------------------------------------------------------
+
 async def _run_scraping_phase(test_subreddit: Optional[str] = None) -> None:
-    """Handles the Reddit scraping phase."""
-    log.info("Phase 1: Fetching Reddit Data...")
+    """Scrape Reddit and convert raw JSON to LLM-ready JSON files."""
+    log.info("Phase 1: Fetching Reddit data...")
     reddit_client = RedditClient()
     data_handler = DataHandler()
-    
+
     try:
         async for sub_name, data in reddit_client.process_all_subreddits(
-            sort_by="top", limit=20, subreddits=[test_subreddit] if test_subreddit else None
+            sort_by="top",
+            limit=20,
+            subreddits=[test_subreddit] if test_subreddit else None,
         ):
             data_handler.save_subreddit_data(sub_name, data)
-            
     except Exception as e:
         log.error(f"Error during data scraping: {e}")
-        # We might want to re-raise if scraping failure should stop the whole pipeline
-        # For now, we log and return, which might allow partial processing if some data exists
     finally:
         await reddit_client.close()
-        
+
     try:
-        # Convert JSON to JSON-JSON for LLM
-        # Run heavy synchronous file processing in a separate thread
         log.info("Processing collected data files...")
         await asyncio.to_thread(data_handler.process_files_to_json)
     except Exception as e:
         log.error(f"Error processing files to JSON: {e}")
 
-def _read_file_sync(file_path: Path) -> str:
-    """Helper for reading file synchronously."""
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
 
-async def process_input_file(
-    file_path: Path, client: "Any", output_dir: Path, platform_name: str = "Other"
-) -> List[pd.DataFrame]:
+async def _process_single_file(
+    file_path: Path,
+    client: Any,
+) -> List[Dict[str, Any]]:
+    """Send one JSON file to the LLM and return validated sentiment records.
+
+    Returns:
+        A list of validated sentiment dicts, or an empty list on failure.
     """
-    Reads a single input file, sends it to the LLM, parses the result.
-    Returns a list containing the dataframe if successful, else empty.
-    """
-    results = []
+    log.info(f"Processing file: {file_path.name}")
+
     try:
-        log.info(f"Processing file: {file_path.name}")
-        
-        # Use asyncio.to_thread to make file reading non-blocking
-        try:
-             content = await asyncio.to_thread(_read_file_sync, file_path)
-        except Exception as e:
-             log.error(f"Failed to read file {file_path.name}: {e}")
-             return results
+        content = await asyncio.to_thread(file_path.read_text, encoding="utf-8")
+    except OSError as e:
+        log.error(f"Failed to read {file_path.name}: {e}")
+        return []
 
-        if not content:
-            log.warning(f"File {file_path.name} is empty. Skipping.")
-            return results
+    if not content.strip():
+        log.warning(f"File {file_path.name} is empty. Skipping.")
+        return []
 
-        # MistralClient/GeminiClient now returns a List[Dict] (or None)
-        json_data = await client.get_response(content)
-        
-        if json_data:
-            df = parse_llm_json_to_df(json_data)
-            
-            if df is not None and not df.empty:
-                df['created_at'] = pd.Timestamp.now()
-                df['Platform'] = platform_name
-                
-                results.append(df)
-                
-                # Save individual analysis for debugging
-                output_file = output_dir / f"{file_path.stem}_analysis.csv"
-                # DataFrame.to_csv is also blocking, offload it
-                await asyncio.to_thread(df.to_csv, output_file, index=False)
-                log.info(f"Saved individual analysis to: {output_file}")
-            else:
-                 log.warning(f"Failed to convert data to DataFrame for {file_path.name}")
-        else:
-            log.error(f"No valid response received for {file_path.name}")
+    result = await client.get_response(content)
+    if result is None:
+        log.error(f"No valid response received for {file_path.name}")
+        return []
 
-    except Exception as e:
-        log.error(f"Error processing {file_path.name}: {e}")
-    
-    return results
+    # Stamp each record with deduplication keys:
+    # - source_id: the filename (unique per scrape batch)
+    # - source_name: the platform (e.g. 'Reddit') — differentiates IDs across
+    #   future platforms (Twitter, SeekingAlpha, etc.) so they never collide.
+    platform = getattr(RedditClient, "SOURCE_NAME", "unknown").lower()
+    for record in result:
+        record.source_id = file_path.name
+        record.source_name = platform
+
+    return result
 
 
-async def _run_llm_analysis_phase(input_dir: Path, output_dir: Path) -> List[pd.DataFrame]:
-    """Handles the LLM analysis phase."""
-    log.info("Phase 2: Running LLM Analysis...")
-    
+async def _run_llm_analysis_phase(
+    input_dir: Path,
+) -> List[SentimentRecord]:
+    """Run LLM analysis on all JSON files in *input_dir*.
+
+    Returns:
+        Aggregated list of :class:`~data.models.SentimentRecord` from all files.
+    """
+    log.info("Phase 2: Running LLM analysis...")
+
     if not input_dir.exists():
         log.error(f"Input directory not found: {input_dir}")
         return []
@@ -126,147 +112,139 @@ async def _run_llm_analysis_phase(input_dir: Path, output_dir: Path) -> List[pd.
     try:
         client = get_llm_client()
     except Exception as e:
-        log.critical(f"Failed to initialize LLM Client: {e}")
+        log.critical(f"Failed to initialise LLM client: {e}")
         return []
 
-    current_platform = getattr(RedditClient, "SOURCE_NAME", "Other")
+    # Fire all LLM calls concurrently. The RateLimiter inside each client
+    # serialises requests at the API level when the RPM window is full,
+    # so gather is safe — it just removes sequential Python overhead.
+    tasks = [
+        _process_single_file(file_path, client)
+        for file_path in json_files
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    all_dfs = []
-    for file_path in json_files:
-        dfs = await process_input_file(file_path, client, output_dir, platform_name=current_platform)
-        all_dfs.extend(dfs)
-    
-    return all_dfs
+    all_records: List[SentimentRecord] = []
+    for file_path, result in zip(json_files, results):
+        if isinstance(result, Exception):
+            log.error(f"LLM call failed for {file_path.name}: {result}")
+        elif result:
+            all_records.extend(result)
+
+    return all_records
 
 
 def _cleanup_directories(input_dir: Path, output_dir: Path) -> None:
-    """Handles cleanup of temporary directories."""
-    if not KEEP_LLM_INPUT and input_dir.exists():
-        log.info(f"Cleaning up LLM Input directory: {input_dir}")
-        try:
-            for item in input_dir.iterdir():
-                if item.is_file():
-                    item.unlink()
-        except Exception as e:
-            log.error(f"Error cleaning LLM input: {e}")
+    """Delete temporary files from *input_dir* and *output_dir* if configured."""
+    for keep_flag, directory, label in [
+        (KEEP_LLM_INPUT, input_dir, "LLM input"),
+        (KEEP_LLM_OUTPUT, output_dir, "LLM output"),
+    ]:
+        if not keep_flag and directory.exists():
+            log.info(f"Cleaning up {label} directory: {directory}")
+            try:
+                for item in directory.iterdir():
+                    if item.is_file():
+                        item.unlink()
+            except Exception as e:
+                log.error(f"Error cleaning {label} directory: {e}")
 
-    if not KEEP_LLM_OUTPUT and output_dir.exists():
-        log.info(f"Cleaning up LLM Output directory: {output_dir}")
-        try:
-            for item in output_dir.iterdir():
-                if item.is_file():
-                    item.unlink()
-        except Exception as e:
-            log.error(f"Error cleaning LLM output: {e}")
 
+# ---------------------------------------------------------------------------
+# Top-level pipeline entry points
+# ---------------------------------------------------------------------------
 
 async def run_full_pipeline(test_subreddit: Optional[str] = None) -> None:
-    """
-    Orchestrates the full pipeline: Scrape -> Processing -> LLM -> CSV.
-    """
-    log.info("Starting Full Pipeline...")
-    
-    # 1. Scrape
+    """Orchestrate the full pipeline: Scrape → LLM → Supabase."""
+    log.info("Starting full pipeline...")
+
+    # Phase 1: Scrape
     await _run_scraping_phase(test_subreddit)
 
-    # 2. LLM Analysis
+    # Phase 2: LLM analysis
     input_dir = Path(LLM_INPUT_DIR)
     output_dir = Path(LLM_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    all_dfs = await _run_llm_analysis_phase(input_dir, output_dir)
-    
-    # 3. Aggregate and Save
-    if all_dfs:
-        final_df = pd.concat(all_dfs, ignore_index=True)
-        final_df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
-        log.info(f"Full pipeline complete. Data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
-        
-        # 4. Insert into Supabase
+
+    all_records = await _run_llm_analysis_phase(input_dir)
+
+    # Phase 3: Persist to Supabase
+    if all_records:
+        log.info(f"Pipeline produced {len(all_records)} records. Inserting into Supabase...")
         try:
-            from database.supabase_client import SupabaseClient
             db_client = SupabaseClient()
-            
-            # Convert DataFrame to list of dicts for insertion
-            # We need to ensure types are compatible (numpy types to python types)
-            records = final_df.to_dict(orient='records')
-            
-            # Identify platform source (defaulting to Reddit for now as main.py is reddit-centric)
-            # ideally this should come from the data or context
-            platform_name = getattr(RedditClient, "SOURCE_NAME", "Reddit")
-            
-            log.info(f"Inserting {len(records)} records into Supabase...")
-            db_client.insert_analysis(records, platform_name)
-            
+            platform_name: str = getattr(RedditClient, "SOURCE_NAME", "Reddit")
+            db_client.insert_analysis(all_records, platform_name)
         except Exception as e:
             log.error(f"Failed to insert data into Supabase: {e}")
-
     else:
         log.warning("No data was generated in the pipeline.")
 
-    # 4. Cleanup
+    # Phase 4: Cleanup
     _cleanup_directories(input_dir, output_dir)
 
 
 def run_parse_only(input_file: str) -> None:
+    """Parse a raw JSON file of LLM output and insert it into Supabase.
+
+    Useful for re-processing a saved LLM response without re-running the
+    full scraping and analysis pipeline.
     """
-    Runs only the parsing logic on a given input file containing raw LLM output.
-    """
-    log.info(f"Running Parse-Only mode on file: {input_file}")
-    
-    if not os.path.exists(input_file):
+    log.info(f"Running parse-only mode on file: {input_file}")
+    file_path = Path(input_file)
+
+    if not file_path.exists():
         log.error(f"Input file not found: {input_file}")
         return
 
     try:
-        with open(input_file, 'r', encoding='utf-8') as f:
-            raw_content = f.read()
-        
-        try:
-            data = json.loads(raw_content)
-            df = parse_llm_json_to_df(data)
-        except json.JSONDecodeError as e:
-            log.error(f"Failed to decode JSON from file: {e}")
-            return
-        
-        if df is not None:
-             if 'created_at' not in df.columns:
-                 df['created_at'] = pd.Timestamp.now()
-             if 'Platform' not in df.columns:
-                 df['Platform'] = 'Other'
+        raw_content = file_path.read_text(encoding="utf-8")
+        data = json.loads(raw_content)
+    except (OSError, json.JSONDecodeError) as e:
+        log.error(f"Failed to read or decode JSON from '{input_file}': {e}")
+        return
 
-             df.to_csv(SENTIMENT_ANALYSIS_OUTPUT_PATH, index=False)
-             log.info(f"Parsed data saved to {SENTIMENT_ANALYSIS_OUTPUT_PATH}")
-        else:
-            log.error("Failed to parse the input file.")
+    records = validate_stock_sentiment_json(data)
+    if not records:
+        log.error("No valid records found in the input file.")
+        return
 
+    try:
+        db_client = SupabaseClient()
+        db_client.insert_analysis(records, platform_name="Other")
+        log.info(f"Inserted {len(records)} records from '{input_file}' into Supabase.")
     except Exception as e:
-        log.error(f"Error in parse-only mode: {e}")
+        log.error(f"Failed to insert parsed data into Supabase: {e}")
 
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
 
 async def async_main() -> None:
     parser = argparse.ArgumentParser(description="Stock Sentiment Analysis Pipeline")
     parser.add_argument(
-        "--parse-only", 
-        type=str, 
-        help="Path to a raw output file to parse. Bypasses scraping and API querying."
+        "--parse-only",
+        type=str,
+        metavar="FILE",
+        help="Path to a raw LLM JSON output file. Bypasses scraping and API querying.",
     )
     parser.add_argument(
         "--test",
         action="store_true",
-        help="Run in test mode: Process only one random subreddit."
+        help="Run in test mode: process only one randomly chosen subreddit.",
     )
-    
+
     args = parser.parse_args()
 
     if args.parse_only:
         run_parse_only(args.parse_only)
     else:
-        test_subreddit = None
+        test_subreddit: Optional[str] = None
         if args.test:
             test_subreddit = random.choice(SUBREDDIT_LIST)
-            log.info(f"Test mode enabled. Selected random subreddit: {test_subreddit}")
-        
+            log.info(f"Test mode enabled. Selected subreddit: {test_subreddit}")
+
         await run_full_pipeline(test_subreddit=test_subreddit)
 
 
