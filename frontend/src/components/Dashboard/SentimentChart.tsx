@@ -14,7 +14,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { format } from "date-fns";
-import { Loader2, TrendingUp } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 interface ChartDataPoint {
   date: string;
@@ -60,7 +60,7 @@ export function SentimentChart({
         console.error("Failed to fetch tickers:", err);
         setTickers(fallbackTickers);
       });
-  }, []);
+  }, [selectedTicker]);
 
   // Fetch actual data based on selectedTicker and Range
   useEffect(() => {
