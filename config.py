@@ -14,7 +14,7 @@ PROMPT_FILE = "LLM/prompts/system_prompt.txt" # Path to system prompt
 # ==============================================================================
 # Active Model Selection
 # Options: "mistral", "gemini"
-ACTIVE_MODEL = "mistral"
+ACTIVE_MODEL = "gemini"
 
 LLM_PROVIDERS = {
     "mistral": {
@@ -24,10 +24,10 @@ LLM_PROVIDERS = {
         "rpd": 1000 # Requests per day
     },
     "gemini": {
-        "model_name": "gemini-2.5-flash-lite",
+        "model_name": "gemma-4-31b-it",
         "env_key": "GEMINI_API_KEY",
-        "rpm": 10,   # Free tier approx limit, adjust as needed
-        "rpd": 20  # Free tier daily limit
+        "rpm": 15,   # Free tier approx limit, adjust as needed
+        "rpd": 1500  # Free tier daily limit
     }
 }
 
