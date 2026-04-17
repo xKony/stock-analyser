@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   Zap,
+  HelpCircle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -19,6 +20,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Overview", href: "/" },
   { icon: LineChart, label: "Market Sentiment", href: "/sentiment" },
   { icon: PieChart, label: "Top Assets", href: "/assets" },
+  { icon: HelpCircle, label: "FAQ", href: "/faq" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
@@ -42,8 +44,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Logo Area */}
         <div className="h-24 flex items-center px-8">
           <div className="flex items-center gap-3">
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--brand-primary)] to-[var(--brand-secondary)] shadow-lg shadow-[var(--brand-glow)]">
-              <Zap size={20} className="text-white" fill="currentColor" />
+            <div className="relative flex items-center justify-center w-10 h-10 shadow-[0_0_15px_var(--brand-primary)] rounded-xl opacity-90 transition-opacity hover:opacity-100">
+              <img
+                src="/logo.svg"
+                alt="Stockify Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <span
               className="text-xl font-bold tracking-tight"
