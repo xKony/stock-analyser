@@ -17,6 +17,8 @@ class SentimentRecord:
     sentiment_confidence: float
     sentiment_label: Literal["BUY", "SELL", "NEUTRAL"]
     key_rationale: str
+    source_text_id: Optional[str] = field(default=None)
+    source_text_snippet: Optional[str] = field(default=None)
     # Deduplication keys — together prevent re-counting the same post/batch
     # across multiple pipeline runs. source_name differentiates platforms
     # (e.g. 'reddit', 'twitter') so their IDs never collide.
@@ -63,6 +65,12 @@ class SentimentRecord:
             key_rationale=str(
                 data.get("key_rationale") or data.get("Key_Rationale", "")
             ),
+            source_text_id=str(
+                data.get("source_text_id") or data.get("Source_Text_Id", "")
+            ) if data.get("source_text_id") or data.get("Source_Text_Id") else None,
+            source_text_snippet=str(
+                data.get("source_text_snippet") or data.get("Source_Text_Snippet", "")
+            ) if data.get("source_text_snippet") or data.get("Source_Text_Snippet") else None,
         )
 
     # ------------------------------------------------------------------
@@ -82,4 +90,6 @@ class SentimentRecord:
             "sentiment_confidence": self.sentiment_confidence,
             "sentiment_label": self.sentiment_label,
             "key_rationale": self.key_rationale,
+            "source_text_id": self.source_text_id,
+            "source_text_snippet": self.source_text_snippet,
         }

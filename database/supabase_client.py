@@ -133,17 +133,32 @@ class SupabaseClient:
         unique_tickers = list({r.symbol for r in records})
         asset_id_cache: Dict[str, int] = self._prefetch_asset_ids(unique_tickers)
 
-        # Insert any tickers not yet in the DB.
-        for ticker in unique_tickers:
-            if ticker not in asset_id_cache:
-                asset_id = self._get_or_create(
-                    table="assets",
-                    search_criteria={"ticker": ticker, "asset_type": "Stock"},
-                    insert_data={"ticker": ticker, "asset_type": "Stock"},
-                    id_column="asset_id",
-                )
-                if asset_id:
-                    asset_id_cache[ticker] = asset_id
+        # Batch insert missing tickers
+        missing_tickers = [t for t in unique_tickers if t not in asset_id_cache]
+        if missing_tickers:
+            insert_data = [{"ticker": t, "asset_type": "Stock"} for t in missing_tickers]
+            try:
+                self.client.table("assets").upsert(
+                    insert_data,
+                    on_conflict="ticker",
+                    ignore_duplicates=True
+                ).execute()
+                log.info(f"Bulk upserted {len(missing_tickers)} new assets.")
+                
+                # Update cache with newly created IDs
+                new_asset_ids = self._prefetch_asset_ids(missing_tickers)
+                asset_id_cache.update(new_asset_ids)
+            except Exception as e:
+                log.error(f"Failed to bulk upsert assets: {e}. Falling back to individual creation.")
+                for ticker in missing_tickers:
+                    asset_id = self._get_or_create(
+                        table="assets",
+                        search_criteria={"ticker": ticker, "asset_type": "Stock"},
+                        insert_data={"ticker": ticker, "asset_type": "Stock"},
+                        id_column="asset_id",
+                    )
+                    if asset_id:
+                        asset_id_cache[ticker] = asset_id
 
         # Build the batch payload.
         batch_mentions: List[Dict[str, Any]] = []
@@ -160,6 +175,9 @@ class SupabaseClient:
                 "platform_id": platform_id,
                 "sentiment_score": record.sentiment_score,
                 "confidence_level": record.sentiment_confidence,
+                "source_text_id": record.source_text_id,
+                "source_text_snippet": record.source_text_snippet,
+                "key_rationale": record.key_rationale,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
 

@@ -116,7 +116,7 @@ class RedditClient:
                         "flair": getattr(post, "link_flair_text", None),
                         "selftext": post.selftext,
                         "comments": [
-                            {"body": c.body, "score": c.score}
+                            {"id": getattr(c, "id", None), "body": c.body, "score": c.score}
                             for c in comments
                             if hasattr(c, "body")
                             and c.score >= MIN_SCORE_COMMENT

@@ -41,6 +41,8 @@ Return a JSON list of objects. No markdown formatting, no preamble.
     "sentiment_score": float,
     "sentiment_confidence": float,
     "sentiment_label": "BUY" | "SELL" | "NEUTRAL",
+    "source_text_id": "The ID of the specific post or comment that drove this sentiment",
+    "source_text_snippet": "A short, 1-2 sentence exact quote from the text justifying the score",
     "key_rationale": "Concise summary of weighted driver"
   }
 ]
@@ -50,3 +52,5 @@ Return a JSON list of objects. No markdown formatting, no preamble.
 - sentiment_score: Scale -1.0 (Strongly Bearish) to 1.0 (Strongly Bullish).
 - sentiment_confidence: Scale 0.0 to 1.0 based on data volume/consistency.
 - sentiment_label: "BUY" (Score > 0.2), "SELL" (Score < -0.2), "NEUTRAL" (In-between).
+- source_text_id: The `id` from the JSON input corresponding to the text segment providing the strongest signal.
+- source_text_snippet: An exact textual quote showing the sentiment.

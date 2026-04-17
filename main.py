@@ -3,7 +3,7 @@ import argparse
 import json
 import random
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any  
 
 from data.data_handler import DataHandler
 from data.models import SentimentRecord
@@ -55,7 +55,7 @@ async def _run_scraping_phase(test_subreddit: Optional[str] = None) -> None:
 async def _process_single_file(
     file_path: Path,
     client: Any,
-) -> List[Dict[str, Any]]:
+) -> List[dict[str, Any]]:
     """Send one JSON file to the LLM and return validated sentiment records.
 
     Returns:
@@ -174,7 +174,7 @@ async def run_full_pipeline(test_subreddit: Optional[str] = None) -> None:
         try:
             db_client = SupabaseClient()
             platform_name: str = getattr(RedditClient, "SOURCE_NAME", "Reddit")
-            db_client.insert_analysis(all_records, platform_name)
+            await asyncio.to_thread(db_client.insert_analysis, all_records, platform_name)
         except Exception as e:
             log.error(f"Failed to insert data into Supabase: {e}")
     else:
