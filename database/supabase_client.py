@@ -1,13 +1,26 @@
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Final
 
 from supabase import Client, create_client
+from postgrest.exceptions import APIError
 
 from config import SUPABASE_KEY, SUPABASE_URL
 from data.models import SentimentRecord
 from utils.logger import get_logger
 
 log = get_logger(__name__)
+
+# --- Constants ---
+TABLE_PLATFORMS: Final[str] = "platforms"
+TABLE_ASSETS: Final[str] = "assets"
+TABLE_MENTIONS: Final[str] = "asset_mentions"
+TABLE_PROCESSED_POSTS: Final[str] = "processed_posts"
+
+COL_PLATFORM_ID: Final[str] = "platform_id"
+COL_ASSET_ID: Final[str] = "asset_id"
+COL_TICKER: Final[str] = "ticker"
+COL_POST_ID: Final[str] = "post_id"
+COL_SOURCE_NAME: Final[str] = "source_name"
 
 
 class SupabaseClient:
@@ -29,7 +42,7 @@ class SupabaseClient:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_query(self, table: str, criteria: Dict[str, Any]):
+    def _build_query(self, table: str, criteria: Dict[str, Any]) -> Any:
         """Build a chainable Supabase select query filtered by *criteria*."""
         query = self.client.table(table).select("*")
         for key, value in criteria.items():
@@ -58,22 +71,22 @@ class SupabaseClient:
             response = self._build_query(table, search_criteria).execute()
 
             if response.data:
-                return response.data[0].get(id_column)
+                return int(response.data[0].get(id_column))
 
             # Record not found — attempt insert.
             try:
                 insert_response = self.client.table(table).insert(insert_data).execute()
                 if insert_response.data:
                     log.info(f"Created new record in '{table}': {insert_data}")
-                    return insert_response.data[0].get(id_column)
-            except Exception as insert_error:
+                    return int(insert_response.data[0].get(id_column))
+            except APIError as insert_error:
                 # Handle race condition: another process may have inserted first.
                 log.warning(
                     f"Insert failed for '{table}', retrying fetch: {insert_error}"
                 )
                 retry_response = self._build_query(table, search_criteria).execute()
                 if retry_response.data:
-                    return retry_response.data[0].get(id_column)
+                    return int(retry_response.data[0].get(id_column))
                 raise insert_error
 
         except Exception as e:
@@ -90,14 +103,19 @@ class SupabaseClient:
             return {}
         try:
             response = (
-                self.client.table("assets")
-                .select("ticker, asset_id")
-                .in_("ticker", tickers)
+                self.client.table(TABLE_ASSETS)
+                .select(f"{COL_TICKER}, {COL_ASSET_ID}")
+                .in_(COL_TICKER, tickers)
                 .execute()
             )
-            return {row["ticker"]: row["asset_id"] for row in (response.data or [])}
+            return {
+                row[COL_TICKER]: int(row[COL_ASSET_ID])
+                for row in (response.data or [])
+            }
         except Exception as e:
-            log.warning(f"Pre-fetch of asset IDs failed, falling back to per-item lookup: {e}")
+            log.warning(
+                f"Pre-fetch of asset IDs failed, falling back to per-item lookup: {e}"
+            )
             return {}
 
     # ------------------------------------------------------------------
@@ -117,10 +135,10 @@ class SupabaseClient:
             return
 
         platform_id = self._get_or_create(
-            table="platforms",
-            search_criteria={"name": platform_name},
-            insert_data={"name": platform_name},
-            id_column="platform_id",
+            table=TABLE_PLATFORMS,
+            search_criteria={COL_SOURCE_NAME: platform_name},
+            insert_data={COL_SOURCE_NAME: platform_name},
+            id_column=COL_PLATFORM_ID,
         )
 
         if not platform_id:
@@ -136,11 +154,13 @@ class SupabaseClient:
         # Batch insert missing tickers
         missing_tickers = [t for t in unique_tickers if t not in asset_id_cache]
         if missing_tickers:
-            insert_data = [{"ticker": t, "asset_type": "Stock"} for t in missing_tickers]
+            insert_data = [
+                {COL_TICKER: t, "asset_type": "Stock"} for t in missing_tickers
+            ]
             try:
-                self.client.table("assets").upsert(
+                self.client.table(TABLE_ASSETS).upsert(
                     insert_data,
-                    on_conflict="ticker",
+                    on_conflict=COL_TICKER,
                     ignore_duplicates=True
                 ).execute()
                 log.info(f"Bulk upserted {len(missing_tickers)} new assets.")
@@ -149,13 +169,15 @@ class SupabaseClient:
                 new_asset_ids = self._prefetch_asset_ids(missing_tickers)
                 asset_id_cache.update(new_asset_ids)
             except Exception as e:
-                log.error(f"Failed to bulk upsert assets: {e}. Falling back to individual creation.")
+                log.error(
+                    f"Failed to bulk upsert assets: {e}. Falling back to individual creation."
+                )
                 for ticker in missing_tickers:
                     asset_id = self._get_or_create(
-                        table="assets",
-                        search_criteria={"ticker": ticker, "asset_type": "Stock"},
-                        insert_data={"ticker": ticker, "asset_type": "Stock"},
-                        id_column="asset_id",
+                        table=TABLE_ASSETS,
+                        search_criteria={COL_TICKER: ticker, "asset_type": "Stock"},
+                        insert_data={COL_TICKER: ticker, "asset_type": "Stock"},
+                        id_column=COL_ASSET_ID,
                     )
                     if asset_id:
                         asset_id_cache[ticker] = asset_id
@@ -167,12 +189,14 @@ class SupabaseClient:
         for record in records:
             asset_id = asset_id_cache.get(record.symbol)
             if not asset_id:
-                log.warning(f"Could not resolve asset_id for '{record.symbol}'. Skipping.")
+                log.warning(
+                    f"Could not resolve asset_id for '{record.symbol}'. Skipping."
+                )
                 continue
 
             batch_mentions.append({
-                "asset_id": asset_id,
-                "platform_id": platform_id,
+                COL_ASSET_ID: asset_id,
+                COL_PLATFORM_ID: platform_id,
                 "sentiment_score": record.sentiment_score,
                 "confidence_level": record.sentiment_confidence,
                 "source_text_id": record.source_text_id,
@@ -186,8 +210,10 @@ class SupabaseClient:
             return
 
         try:
-            self.client.table("asset_mentions").insert(batch_mentions).execute()
-            log.info(f"Successfully inserted {len(batch_mentions)} records to Supabase.")
+            self.client.table(TABLE_MENTIONS).insert(batch_mentions).execute()
+            log.info(
+                f"Successfully inserted {len(batch_mentions)} records to Supabase."
+            )
         except Exception as e:
             log.error(f"Failed to execute batch insert: {e}")
 
@@ -195,7 +221,7 @@ class SupabaseClient:
     # Post deduplication
     # ------------------------------------------------------------------
 
-    def get_processed_post_ids(self, source_name: str) -> set:
+    def get_processed_post_ids(self, source_name: str) -> set[str]:
         """Return the set of post IDs already analysed for *source_name*.
 
         Called once before scraping so the reddit client can filter out
@@ -209,12 +235,12 @@ class SupabaseClient:
         """
         try:
             response = (
-                self.client.table("processed_posts")
-                .select("post_id")
-                .eq("source_name", source_name)
+                self.client.table(TABLE_PROCESSED_POSTS)
+                .select(COL_POST_ID)
+                .eq(COL_SOURCE_NAME, source_name)
                 .execute()
             )
-            ids = {row["post_id"] for row in (response.data or [])}
+            ids = {row[COL_POST_ID] for row in (response.data or [])}
             log.info(f"Fetched {len(ids)} processed post IDs for '{source_name}'.")
             return ids
         except Exception as e:
@@ -235,13 +261,13 @@ class SupabaseClient:
             return
 
         rows = [
-            {"post_id": pid, "source_name": source_name}
+            {COL_POST_ID: pid, COL_SOURCE_NAME: source_name}
             for pid in post_ids
         ]
         try:
-            self.client.table("processed_posts").upsert(
+            self.client.table(TABLE_PROCESSED_POSTS).upsert(
                 rows,
-                on_conflict="post_id,source_name",
+                on_conflict=f"{COL_POST_ID},{COL_SOURCE_NAME}",
                 ignore_duplicates=True,
             ).execute()
             log.info(f"Marked {len(rows)} posts as processed for '{source_name}'.")
