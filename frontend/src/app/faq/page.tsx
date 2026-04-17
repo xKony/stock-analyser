@@ -7,7 +7,6 @@ import {
   Database,
   Filter,
   BrainCircuit,
-  Activity,
   HelpCircle,
   ChevronDown,
   Server,
