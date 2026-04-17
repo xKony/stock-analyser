@@ -3,6 +3,7 @@
 import { createSupabaseBrowserClient } from "@/lib/supabase";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
@@ -101,9 +102,11 @@ function LoginContent() {
           {/* Logo */}
           <div className="flex items-center gap-3 mb-10">
             <div className="size-10 relative opacity-90 hover:opacity-100 transition-opacity shadow-[0_0_15px_var(--brand-primary)] rounded-xl">
-              <img
+              <Image
                 src="/logo.svg"
                 alt="Stockify Logo"
+                width={40}
+                height={40}
                 className="w-full h-full object-contain"
               />
             </div>
