@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, Literal, Optional
 
 
@@ -19,6 +20,7 @@ class SentimentRecord:
     key_rationale: str
     source_text_id: Optional[str] = field(default=None)
     source_text_snippet: Optional[str] = field(default=None)
+    created_at: Optional[datetime] = field(default=None)
     # Deduplication keys — together prevent re-counting the same post/batch
     # across multiple pipeline runs. source_name differentiates platforms
     # (e.g. 'reddit', 'twitter') so their IDs never collide.
