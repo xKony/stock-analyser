@@ -11,16 +11,16 @@ import {
   LogOut,
   X,
   HelpCircle,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 
 const navItems = [
-  { icon: LayoutDashboard, label: "Overview", href: "/" },
-  { icon: LineChart, label: "Market Sentiment", href: "/sentiment" },
-  { icon: PieChart, label: "Top Assets", href: "/assets" },
-  { icon: HelpCircle, label: "FAQ", href: "/faq" },
-  { icon: Settings, label: "Settings", href: "/settings" },
+  { icon: LayoutDashboard, label: "Market Overview", href: "/" },
+  { icon: LineChart, label: "Sentiment Index", href: "/sentiment" },
+  { icon: PieChart, label: "Asset Allocation", href: "/assets" },
+  { icon: HelpCircle, label: "Intelligence FAQ", href: "/faq" },
+  { icon: Settings, label: "System Config", href: "/settings" },
 ];
 
 interface SidebarProps {
@@ -35,41 +35,32 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     <>
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-[260px] flex flex-col transition-transform duration-300 lg:translate-x-0 border-r border-white/5",
-          isOpen ? "translate-x-0" : "-translate-x-full",
-          "bg-[var(--bg-app)]/80 backdrop-blur-xl", // Glass sidebar
+          "fixed inset-y-0 left-0 z-50 w-[280px] flex flex-col transition-transform duration-300 lg:translate-x-0 border-r border-rule bg-paper",
+          isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full",
         )}
       >
-        {/* Logo Area */}
-        <div className="h-24 flex items-center px-8">
-          <div className="flex items-center gap-3">
-            <div className="relative flex items-center justify-center w-10 h-10 shadow-[0_0_15px_var(--brand-primary)] rounded-xl opacity-90 transition-opacity hover:opacity-100">
-              <Image
-                src="/logo.svg"
-                alt="Stockify Logo"
-                width={40}
-                height={40}
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <span
-              className="text-xl font-bold tracking-tight"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Stockify
-            </span>
-          </div>
-          {/* Mobile Close Button */}
+        {/* Brand Identity */}
+        <div className="h-24 flex items-center px-10 border-b border-rule">
+          <Link href="/" className="group">
+            <h1 className="text-2xl font-serif font-black tracking-tighter leading-[0.8] text-ink group-hover:text-signal transition-colors uppercase">
+              Stock <br /><span className="italic font-normal lowercase">Analyser</span>
+            </h1>
+          </Link>
+          
           <button
             onClick={onClose}
-            className="ml-auto lg:hidden p-2 text-[var(--text-secondary)]"
+            className="ml-auto lg:hidden p-2 text-ink"
           >
-            <X size={20} />
+            <X size={24} />
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-4 space-y-2 text-sm font-medium py-6">
+        {/* Navigation - Monospaced & Authoritative */}
+        <nav className="flex-1 px-6 py-10 space-y-1">
+          <div className="px-4 mb-4">
+            <p className="text-[10px] font-mono text-ink-muted uppercase tracking-[0.2em]">TERMINAL</p>
+          </div>
+          
           {navItems.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -78,47 +69,38 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Link key={item.href} href={item.href} onClick={onClose}>
                 <div
                   className={cn(
-                    "relative flex items-center gap-3 px-4 py-3 rounded-[var(--radius-btn)] transition-all duration-200 group overflow-hidden",
+                    "relative flex items-center gap-4 px-4 py-3 transition-all duration-200 group overflow-hidden",
                     isActive
-                      ? "text-white shadow-lg shadow-[var(--brand-glow)]"
-                      : "text-[var(--text-secondary)] hover:text-white hover:bg-white/5",
+                      ? "bg-highlight text-ink"
+                      : "text-ink/60 hover:text-ink hover:bg-ink/5",
                   )}
                 >
-                  {/* Active Background (Glass) */}
-                  {isActive && (
-                    <motion.div
-                      layoutId="sidebar-active"
-                      className="absolute inset-0 bg-[var(--brand-primary)]/10 border border-[var(--brand-primary)]/20 rounded-[var(--radius-btn)]"
-                      initial={false}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 30,
-                      }}
-                    />
-                  )}
-
                   <item.icon
-                    size={20}
+                    size={18}
+                    strokeWidth={isActive ? 2.5 : 1.5}
                     className={cn(
                       "relative z-10 transition-colors",
-                      isActive
-                        ? "text-[var(--brand-primary)]"
-                        : "group-hover:text-white",
+                      isActive ? "text-ink" : "group-hover:text-ink",
                     )}
                   />
-                  <span className="relative z-10">{item.label}</span>
+                  <span className="relative z-10 font-mono text-[11px] uppercase tracking-widest">
+                    {item.label}
+                  </span>
+
+                  {isActive && (
+                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-ink" />
+                  )}
                 </div>
               </Link>
             );
           })}
         </nav>
 
-        {/* Footer / User Profile Placeholder */}
-        <div className="p-6 border-t border-white/5">
-          <button className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-[var(--text-secondary)] hover:text-white hover:bg-white/5 rounded-[var(--radius-btn)] transition-colors">
-            <LogOut size={20} />
-            <span>Sign Out</span>
+        {/* System Status / Footer */}
+        <div className="p-8 border-t border-rule">
+          <button className="flex items-center gap-3 w-full px-6 py-3 text-[10px] font-mono bg-ink text-paper hover:bg-signal transition-all uppercase tracking-widest">
+            <LogOut size={16} />
+            <span>Exit Session</span>
           </button>
         </div>
       </aside>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Bell, LogOut, Loader2 } from "lucide-react";
+import { Search, Bell, LogOut, Loader2, Menu } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
@@ -41,103 +41,90 @@ export function Header({ onMenuClick }: HeaderProps) {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
     setMenuOpen(false);
-    router.refresh(); // Force a refresh to clear state
+    router.refresh();
   };
 
   return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className="fixed top-0 right-0 left-0 lg:left-[260px] z-30 px-6 py-4 pointer-events-none"
-    >
-      {/* Floating Glass Bar */}
-      <div className="flex items-center justify-between pointer-events-auto h-16 px-6 rounded-[24px] border border-white/5 shadow-2xl backdrop-blur-xl bg-[var(--bg-app)]/70 relative">
+    <header className="fixed top-0 right-0 left-0 lg:left-[280px] z-30 bg-paper/80 backdrop-blur-md border-b border-rule h-20 flex items-center px-6 lg:px-10">
+      <div className="flex items-center justify-between w-full">
         {/* Mobile Menu Trigger */}
-        <div className="lg:hidden mr-4">
-          <button
-            onClick={onMenuClick}
-            className="p-2 text-[var(--text-secondary)]"
-          >
-            <Search className="w-5 h-5" />
-          </button>
-        </div>
-        {/* Search Bar with Command Hint */}
-        <div className="flex-1 max-w-md hidden sm:block">
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden p-2 -ml-2 text-ink hover:text-signal transition-colors"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+
+        {/* Search Bar - Editorial Style */}
+        <div className="flex-1 max-w-xl hidden sm:block">
           <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)] group-focus-within:text-[var(--brand-primary)] transition-colors" />
+            <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-ink/40 group-focus-within:text-signal transition-colors" />
             <input
               type="text"
-              placeholder="Search query or ticker..."
-              className="w-full bg-[var(--bg-card)] border border-transparent focus:border-[var(--brand-primary)]/50 rounded-[var(--radius-btn)] py-2 pl-10 pr-12 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-primary)] transition-all"
+              placeholder="SEARCH THE INTELLIGENCE..."
+              className="w-full bg-transparent border-none py-2 pl-8 pr-12 text-xs font-mono text-ink placeholder:text-ink/30 focus:outline-none transition-all uppercase"
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-60">
-              <kbd className="hidden sm:inline-flex px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] bg-[var(--bg-app)] border border-white/10 rounded-[4px] shadow-sm">
-                ⌘K
-              </kbd>
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-40">
+              <kbd className="text-[10px] font-mono border border-rule px-1.5 py-0.5">⌘K</kbd>
             </div>
           </div>
         </div>
-        <div className="flex-1 sm:hidden"></div> {/* Spacer for mobile */}
+
+        <div className="flex-1 sm:hidden"></div>
+
         {/* Right Actions */}
-        <div className="flex items-center gap-4 ml-4">
-          {/* Notifications */}
-          <button className="relative p-2 rounded-full hover:bg-white/5 transition-colors text-[var(--text-secondary)] hover:text-white">
-            <Bell size={20} />
-            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[var(--error)] border-2 border-[var(--bg-app)]" />
+        <div className="flex items-center gap-6">
+          <button className="relative p-2 text-ink hover:text-signal transition-colors group">
+            <Bell size={20} strokeWidth={1.5} />
+            <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-signal" />
           </button>
 
-          <div className="h-8 w-px bg-white/10 mx-1 sm:mx-2" />
+          <div className="h-4 w-px bg-rule/20" />
 
           {/* Profile / Login */}
           {loading ? (
-            <div className="w-24 flex justify-center">
-              <Loader2 className="w-5 h-5 animate-spin text-[var(--text-muted)]" />
+            <div className="w-8 flex justify-center">
+              <Loader2 className="w-4 h-4 animate-spin text-ink-muted" />
             </div>
           ) : user ? (
             <div className="relative">
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
-                className="flex items-center gap-2 text-sm font-medium text-white bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] px-3 sm:px-4 py-2 rounded-[var(--radius-btn)] border border-white/5 transition-all"
+                className="flex items-center gap-3 text-xs font-mono text-ink hover:text-signal transition-all uppercase"
               >
-                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-[var(--brand-primary)] to-purple-400 flex items-center justify-center text-[10px] shadow-[0_0_10px_var(--brand-glow)] uppercase font-bold">
+                <div className="w-8 h-8 bg-ink text-paper flex items-center justify-center font-bold text-xs">
                   {user.email?.[0] || "U"}
                 </div>
-                <span className="hidden sm:inline-block max-w-[100px] truncate">
+                <span className="hidden sm:inline-block max-w-[120px] truncate">
                   {user.email?.split("@")[0]}
                 </span>
               </button>
 
-              {/* Dropdown Menu */}
               <AnimatePresence>
                 {menuOpen && (
                   <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute right-0 top-full mt-2 w-48 rounded-[var(--radius-card)] bg-[var(--bg-card)] border border-white/10 shadow-2xl overflow-hidden py-1"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute right-0 top-full mt-4 w-56 bg-white border border-rule shadow-xl py-2"
                   >
-                    <div className="px-4 py-3 border-b border-white/5 mb-1">
-                      <p className="text-xs text-[var(--text-secondary)] truncate">
-                        Signed in as
-                      </p>
-                      <p className="text-sm font-medium text-white truncate">
-                        {user.email}
-                      </p>
+                    <div className="px-4 py-3 border-b border-rule/10 mb-2">
+                      <p className="text-[10px] font-mono text-ink-muted uppercase">IDENTITY</p>
+                      <p className="text-sm font-serif font-bold text-ink truncate">{user.email}</p>
                     </div>
                     <Link
                       href="/admin"
-                      className="block w-full text-left px-4 py-2 text-sm text-[var(--text-secondary)] hover:text-white hover:bg-white/5 transition-colors"
+                      className="block w-full text-left px-4 py-2 text-xs font-mono text-ink hover:bg-highlight transition-colors uppercase"
                       onClick={() => setMenuOpen(false)}
                     >
-                      Admin Dashboard
+                      Control Center
                     </Link>
                     <button
                       onClick={handleSignOut}
-                      className="w-full text-left px-4 py-2 text-sm text-[var(--error)] hover:bg-white/5 flex items-center gap-2 transition-colors border-t border-white/5 mt-1"
+                      className="w-full text-left px-4 py-2 text-xs font-mono text-signal hover:bg-highlight flex items-center gap-2 transition-colors border-t border-rule/10 mt-2 uppercase"
                     >
-                      <LogOut size={16} />
-                      <span>Sign Out</span>
+                      <LogOut size={14} />
+                      <span>Terminate Session</span>
                     </button>
                   </motion.div>
                 )}
@@ -146,13 +133,13 @@ export function Header({ onMenuClick }: HeaderProps) {
           ) : (
             <Link
               href="/login"
-              className="flex items-center gap-2 text-sm font-medium text-white bg-[var(--brand-primary)] hover:bg-[#5a52d6] px-5 py-2 rounded-[var(--radius-btn)] transition-all shadow-[0_0_15px_var(--brand-glow)]"
+              className="text-xs font-mono bg-ink text-paper px-6 py-2.5 hover:bg-signal transition-colors uppercase tracking-widest"
             >
-              Login
+              Sign In
             </Link>
           )}
         </div>
       </div>
-    </motion.header>
+    </header>
   );
 }

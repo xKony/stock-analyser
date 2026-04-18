@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { GlassPanel } from "@/components/ui/GlassPanel";
+import { EditorialPanel } from "@/components/ui/EditorialPanel";
 import { Loader2 } from "lucide-react";
 import { useSentimentChartData } from "./useSentimentChartData";
 import { ChartHeader } from "./ChartHeader";
@@ -9,12 +9,6 @@ import { ChartControls } from "./ChartControls";
 import { ChartArea } from "./ChartArea";
 import { SentimentChartProps, TimeRange } from "./types";
 
-/**
- * SentimentChart component displays a merged view of sentiment and price trends.
- * 
- * It handles the selection of tickers and time ranges, and presents the data
- * using Recharts in a glass-morphic panel.
- */
 export function SentimentChart({
   className,
   delay = 0.1,
@@ -32,9 +26,9 @@ export function SentimentChart({
   const isPositive = currentSentiment >= 0;
 
   return (
-    <GlassPanel className={className} delay={delay}>
+    <EditorialPanel className={className} delay={delay}>
       {/* Header & Controls Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-8 mb-12">
         <ChartHeader currentSentiment={currentSentiment} />
         
         <ChartControls
@@ -47,11 +41,11 @@ export function SentimentChart({
       </div>
 
       {/* Chart Display Area */}
-      <div className="h-[280px] w-full relative">
+      <div className="h-[400px] w-full relative">
         {isLoading ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 
-              className="animate-spin text-[var(--brand-primary)]" 
+              className="animate-spin text-signal" 
               aria-label="Loading chart data"
             />
           </div>
@@ -63,6 +57,6 @@ export function SentimentChart({
           />
         )}
       </div>
-    </GlassPanel>
+    </EditorialPanel>
   );
 }

@@ -26,17 +26,15 @@ export function ChartControls({
   onRangeChange,
 }: ChartControlsProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      {/* Ticker Select */}
-      <div className="relative">
-        <label htmlFor="ticker-select" className="sr-only">
-          Select Ticker
-        </label>
+    <div className="flex flex-wrap items-center gap-4">
+      {/* Ticker Selector - Journal Style */}
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[9px] text-ink-muted uppercase">ASSET</span>
         <select
           id="ticker-select"
           value={selectedTicker}
           onChange={(e) => onTickerChange(e.target.value)}
-          className="bg-[var(--bg-app)] border border-white/10 text-white text-xs rounded-[var(--radius-btn)] px-3 py-1.5 focus:outline-none focus:border-[var(--brand-primary)] cursor-pointer"
+          className="bg-paper border border-rule text-ink text-xs font-mono font-bold px-3 py-1.5 focus:outline-none focus:bg-highlight cursor-pointer uppercase tracking-widest"
         >
           {tickers.map((t) => (
             <option key={t} value={t}>
@@ -46,28 +44,26 @@ export function ChartControls({
         </select>
       </div>
 
-      {/* Time Range Pills */}
-      <div 
-        role="group" 
-        aria-label="Time range selector"
-        className="flex bg-[var(--bg-app)] rounded-[var(--radius-pill)] p-1 border border-white/5"
-      >
-        {TIME_RANGES.map((range) => (
-          <button
-            key={range}
-            type="button"
-            onClick={() => onRangeChange(range)}
-            aria-pressed={selectedRange === range}
-            className={cn(
-              "px-3 py-1 text-[10px] font-medium rounded-[var(--radius-pill)] transition-all",
-              selectedRange === range
-                ? "bg-[var(--brand-primary)] text-white shadow-md shadow-[var(--brand-glow)]"
-                : "text-[var(--text-muted)] hover:text-white"
-            )}
-          >
-            {range}
-          </button>
-        ))}
+      {/* Time Range Selector - Rigid Tabbed Style */}
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[9px] text-ink-muted uppercase">WINDOW</span>
+        <div className="flex border border-rule">
+          {TIME_RANGES.map((range) => (
+            <button
+              key={range}
+              type="button"
+              onClick={() => onRangeChange(range)}
+              className={cn(
+                "px-4 py-1.5 text-[10px] font-mono font-bold border-r border-rule last:border-r-0 transition-all uppercase tracking-tighter",
+                selectedRange === range
+                  ? "bg-ink text-paper"
+                  : "text-ink hover:bg-highlight"
+              )}
+            >
+              {range}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

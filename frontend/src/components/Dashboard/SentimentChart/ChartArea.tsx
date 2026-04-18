@@ -29,53 +29,35 @@ export function ChartArea({
   selectedTicker,
   isPositive,
 }: ChartAreaProps) {
-  const gradientId = `sentimentGradient-${selectedTicker}`;
-  const fillColor = isPositive ? "var(--success)" : "var(--error)";
+  const signalColor = isPositive ? "#1A1A1A" : "#FF4D30"; // Positive is ink (neutral/strong), Negative is signal
 
   return (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={data}>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={fillColor} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={fillColor} stopOpacity={0} />
-          </linearGradient>
-          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow
-              dx="0"
-              dy="8"
-              stdDeviation="12"
-              floodColor={fillColor}
-              floodOpacity="0.6"
-            />
-          </filter>
-        </defs>
-
-        {/* Minimal Axis - Date only */}
         <XAxis
           dataKey="date"
-          tickFormatter={(str) => format(new Date(str), "dd MMM")}
-          stroke="var(--text-muted)"
-          fontSize={10}
-          tickLine={false}
-          axisLine={false}
+          tickFormatter={(str) => format(new Date(str), "MMM dd").toUpperCase()}
+          stroke="#1A1A1A"
+          strokeOpacity={0.2}
+          fontSize={9}
+          fontFamily="var(--font-mono)"
+          tickLine={true}
+          axisLine={true}
           dy={10}
-          minTickGap={30}
+          minTickGap={40}
         />
 
-        {/* Left YAxis for Sentiment */}
-        <YAxis yAxisId="left" hide domain={[-1, 1]} />
-
-        {/* Right YAxis for Price */}
         <YAxis
           yAxisId="right"
           orientation="right"
           domain={["auto", "auto"]}
           tickFormatter={(val) => `$${val}`}
-          stroke="var(--text-muted)"
-          fontSize={10}
-          tickLine={false}
-          axisLine={false}
+          stroke="#1A1A1A"
+          strokeOpacity={0.2}
+          fontSize={9}
+          fontFamily="var(--font-mono)"
+          tickLine={true}
+          axisLine={true}
           dx={10}
         />
 
@@ -84,35 +66,38 @@ export function ChartArea({
         <ReferenceLine
           y={0}
           yAxisId="left"
-          stroke="rgba(255,255,255,0.05)"
-          strokeDasharray="3 3"
+          stroke="#1A1A1A"
+          strokeOpacity={0.1}
+          strokeWidth={1}
         />
 
+        {/* Sentiment Area - High Contrast Step */}
         <Area
           yAxisId="left"
-          type="monotone"
+          type="stepAfter"
           dataKey="sentiment"
-          stroke={fillColor}
-          strokeWidth={3}
-          fill={`url(#${gradientId})`}
-          animationDuration={1500}
-          style={{ filter: "url(#glow)" }}
+          stroke={signalColor}
+          strokeWidth={2}
+          fill={signalColor}
+          fillOpacity={0.05}
+          animationDuration={1000}
         />
 
+        {/* Price Line - Bold Ink */}
         <Line
           yAxisId="right"
           type="monotone"
           dataKey="price"
-          stroke="var(--brand-primary)"
-          strokeWidth={2}
+          stroke="#1A1A1A"
+          strokeWidth={3}
           dot={false}
           activeDot={{
             r: 4,
-            fill: "var(--brand-primary)",
-            stroke: "var(--bg-app)",
+            fill: "#1A1A1A",
+            stroke: "#FBF9F4",
             strokeWidth: 2,
           }}
-          animationDuration={1500}
+          animationDuration={1000}
           connectNulls
         />
       </AreaChart>
