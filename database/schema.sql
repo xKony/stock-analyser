@@ -5,10 +5,9 @@ CREATE TABLE platforms (
 
 CREATE TABLE assets (
     asset_id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    ticker VARCHAR(20) NOT NULL, 
+    ticker VARCHAR(20) NOT NULL UNIQUE, 
     asset_name VARCHAR(255),
-    asset_type VARCHAR(50), 
-    UNIQUE(ticker, asset_type)
+    asset_type VARCHAR(50)
 );
 
 CREATE TABLE asset_mentions (
@@ -17,5 +16,8 @@ CREATE TABLE asset_mentions (
     platform_id SMALLINT REFERENCES platforms(platform_id),
     sentiment_score NUMERIC(5, 4), 
     confidence_level NUMERIC(5, 4), 
+    source_text_id VARCHAR(50),
+    source_text_snippet TEXT,
+    key_rationale TEXT,
     created_at TIMESTAMPTZ NOT NULL
 );

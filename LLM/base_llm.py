@@ -172,14 +172,16 @@ class BaseLLM(ABC):
         log.debug(f"RAW LLM RESPONSE ({self.provider_name}):\n{content_str}")
 
         try:
-            # Strip markdown code fences robustly.
-            # Handles: ```json, ```JSON, ```, any trailing tag, surrounding whitespace.
-            clean_str = re.sub(
-                r"^\s*```[a-zA-Z]*\s*|\s*```\s*$",
-                "",
-                content_str,
-                flags=re.DOTALL,
-            ).strip()
+            # Robustly extract JSON array if markdown or conversational text is present
+            start_idx = content_str.find('[')
+            end_idx = content_str.rfind(']')
+            
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                clean_str = content_str[start_idx:end_idx + 1]
+            else:
+                # Fallback to the original stripped string if no array brackets found
+                clean_str = content_str.strip()
+                
             data = json.loads(clean_str)
             valid_data = validate_stock_sentiment_json(data)
 

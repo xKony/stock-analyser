@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 
 # Add project root to path
@@ -14,34 +15,40 @@ from utils.rate_limiter import RateLimiter
 def test_data_handler_merge():
     print("Testing DataHandler merge Logic...")
     
-    # Mock file inputs as Path objects
-    mock_path1 = MagicMock()
-    mock_path1.__str__.return_value = "file1.json"
-    mock_path1.name = "file1.json"
+    # Mock paths
+    mock_files = [Path("file1.json"), Path("file2.json")]
     
-    mock_path2 = MagicMock()
-    mock_path2.__str__.return_value = "file2.json"
-    mock_path2.name = "file2.json"
+    # Mock content for the files
+    file1_content = [{"title": "Post 1", "score": 10}]
+    file2_content = [{"title": "Post 2", "score": 20}]
     
-    mock_files = [mock_path1, mock_path2]
+    # We need to mock:
+    # 1. output_dir.glob("*.json") -> returns mock_files
+    # 2. _process_single_file -> we'll let it run but mock its dependencies
+    # 3. llm_input_dir.glob("*.json") -> returns the processed files for merging
     
-    # Mock content
-    file1_content = {
-        "meta": {"subreddit": "sub1"},
-        "data": [{"title": "Post 1", "score": 10}]
-    }
-    file2_content = {
-        "meta": {"subreddit": "sub2"},
-        "data": [{"title": "Post 2", "score": 20}]
-    }
-    
-    with patch("pathlib.Path.glob", return_value=mock_files), \
-         patch("builtins.open", mock_open()) as mocked_file, \
-         patch("json.load", side_effect=[file1_content, file2_content]), \
-         patch("json.dump") as mock_dump, \
+    with patch("data.data_handler.Path.glob") as mock_glob, \
+         patch("data.data_handler.open", mock_open()) as mocked_file, \
+         patch("data.data_handler.json.load") as mock_json_load, \
+         patch("data.data_handler.json.dump") as mock_json_dump, \
          patch("data.data_handler.MERGE_LLM_OUTPUT", True), \
-         patch("pathlib.Path.unlink"), \
-         patch("os.remove"):
+         patch("data.data_handler.Path.exists", return_value=False), \
+         patch("data.data_handler.Path.unlink"):
+         
+         # Setup mock_glob to return different values for different calls
+         # First call in process_files_to_json: output_dir.glob("*.json")
+         # Second call in process_files_to_json: llm_input_dir.glob("*.json")
+         processed_files = [Path("input/file1.json"), Path("input/file2.json")]
+         mock_glob.side_effect = [mock_files, processed_files]
+         
+         # json.load side effects:
+         # 1. file1.json (raw)
+         # 2. file2.json (raw)
+         # 3. input/file1.json (for merge)
+         # 4. input/file2.json (for merge)
+         raw_file1 = {"data": [{"title": "Post 1", "score": 10}]}
+         raw_file2 = {"data": [{"title": "Post 2", "score": 20}]}
+         mock_json_load.side_effect = [raw_file1, raw_file2, file1_content, file2_content]
          
          dh = DataHandler()
          # Mock optimize to just return the post
@@ -49,20 +56,17 @@ def test_data_handler_merge():
          
          dh.process_files_to_json()
          
-         # Check if json.dump was called with merged data
-         # Expected: One dump call for the merged file with list of 2 items
+         # Find the call to json.dump that contains the merged buffer
+         # It should be the last one
+         merged_call = None
+         for call in mock_json_dump.call_args_list:
+             args, _ = call
+             if len(args[0]) == 2:
+                 merged_call = call
+                 break
          
-         # We have calls to dump? 
-         # The loop does NOT dump if MERGE is True.
-         # It dumps once at the end.
-         
-         writer_handle = mocked_file()
-         
-         # The code calls json.dump(merged_buffer, f_out, ...)
-         # Check args of the LAST json.dump call
-         call_args = mock_dump.call_args
-         if call_args:
-             args, _ = call_args
+         if merged_call:
+             args, _ = merged_call
              dumped_data = args[0]
              print(f"Dumped data length: {len(dumped_data)}")
              assert len(dumped_data) == 2
@@ -70,7 +74,11 @@ def test_data_handler_merge():
              assert dumped_data[1]["title"] == "Post 2"
              print("Passed: DataHandler merge Logic")
          else:
-             print("Failed: json.dump not called")
+             print("Failed: Merged json.dump not called with 2 items")
+             # Print what was called for debugging
+             for i, call in enumerate(mock_json_dump.call_args_list):
+                 print(f"Call {i} args: {call[0][0]}")
+             raise AssertionError("Merged data not dumped")
 
 def test_rate_limiter_empty():
     print("Testing RateLimiter safety...")

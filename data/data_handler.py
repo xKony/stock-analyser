@@ -91,11 +91,13 @@ class DataHandler:
             c_body = self._clean_text(comment.get("body", ""), max_length=max_chars)
             
             optimized_comments.append({
+                "id": comment.get("id"),
                 "body": c_body,
                 "score": comment.get("score", 0)
             })
 
         return {
+            "id": post_data.get("id"),
             "title": title,
             "selftext": selftext,
             "score": post_data.get("score", 0),

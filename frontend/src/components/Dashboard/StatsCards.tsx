@@ -19,9 +19,20 @@ export function StatsCards() {
 
   useEffect(() => {
     fetch("/api/stats")
-      .then((res) => res.json())
-      .then((data: StatsData) => setStats(data))
-      .catch((err) => console.error(err));
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`API Error: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data: StatsData) => {
+        if (data && typeof data.totalAssets !== "undefined") {
+          setStats(data);
+        } else {
+          console.error("Invalid stats data received:", data);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch stats:", err));
   }, []);
 
   const avgSentiment = Number(stats.averageSentiment);

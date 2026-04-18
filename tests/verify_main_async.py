@@ -21,8 +21,17 @@ class TestMainAsync(unittest.IsolatedAsyncioTestCase):
         mock_file_path = MagicMock(spec=Path)
         mock_file_path.name = "test.json"
 
+        from data.models import SentimentRecord
         mock_client = AsyncMock()
-        expected_records = [{"symbol": "TEST", "sentiment_score": 0.5}]
+        expected_records = [
+            SentimentRecord(
+                symbol="TEST",
+                sentiment_score=0.5,
+                sentiment_confidence=0.8,
+                sentiment_label="BUY",
+                key_rationale="test"
+            )
+        ]
 
         # First to_thread call returns the file content.
         mock_to_thread.return_value = '{"some": "json"}'
