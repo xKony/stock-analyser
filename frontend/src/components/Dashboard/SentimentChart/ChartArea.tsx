@@ -32,8 +32,9 @@ export function ChartArea({
   const signalColor = isPositive ? "#1A1A1A" : "#FF4D30"; // Positive is ink (neutral/strong), Negative is signal
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
       <AreaChart data={data}>
+        <YAxis yAxisId="left" hide domain={["auto", "auto"]} />
         <XAxis
           dataKey="date"
           tickFormatter={(str) => format(new Date(str), "MMM dd").toUpperCase()}

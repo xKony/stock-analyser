@@ -9,7 +9,8 @@ type BadgeVariant =
   | "warning"
   | "info"
   | "neutral"
-  | "active";
+  | "active"
+  | "editorial";
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -19,14 +20,15 @@ interface BadgeProps {
 
 const variantStyles: Record<BadgeVariant, string> = {
   default:
-    "bg-[var(--bg-card-hover)] text-[var(--text-secondary)] border-transparent",
-  success: "bg-[var(--success)]/10 text-[var(--success)] border-transparent",
-  error: "bg-[var(--error)]/10 text-[var(--error)] border-transparent",
-  warning: "bg-[var(--warning)]/10 text-[var(--warning)] border-transparent",
-  info: "bg-[var(--info)]/10 text-[var(--info)] border-transparent",
-  neutral: "bg-white/5 text-[var(--text-muted)] border-transparent",
+    "bg-paper text-ink border-rule",
+  success: "bg-green-100 text-green-800 border-green-800/30",
+  error: "bg-signal text-paper border-signal",
+  warning: "bg-yellow-200 text-yellow-900 border-yellow-900/30",
+  info: "bg-blue-100 text-blue-900 border-blue-900/30",
+  neutral: "bg-white text-ink-muted border-rule/20",
   active:
-    "bg-[var(--brand-primary)]/10 text-[var(--brand-primary)] border-[var(--brand-primary)]/20 shadow-[0_0_12px_var(--brand-glow)]",
+    "bg-ink text-paper border-ink",
+  editorial: "bg-highlight text-ink border-ink",
 };
 
 export function Badge({
@@ -37,8 +39,8 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[11px] font-medium tracking-wide border select-none",
-        "rounded-[var(--radius-pill)]", // Capsule shape
+        "inline-flex items-center gap-1.5 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest border select-none",
+        "rounded-none", // Sharp shapes
         variantStyles[variant],
         className,
       )}

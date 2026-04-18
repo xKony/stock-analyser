@@ -140,7 +140,7 @@ export function TopStocksTable({
 
                   <td className="py-5 w-24">
                     <div className="h-8 w-20 mx-auto">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                         <AreaChart data={stock.sparklineData}>
                           <Area
                             type="step"

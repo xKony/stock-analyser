@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { GlassPanel } from "@/components/ui/GlassPanel";
+import { EditorialPanel } from "@/components/ui/EditorialPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -188,18 +188,7 @@ export default function AdminDashboard() {
   if (!authorized) return null; // Prevent flash
 
   return (
-    <div
-      className="flex min-h-screen relative overflow-hidden"
-      style={{
-        backgroundColor: "var(--bg-app)",
-        color: "var(--text-secondary)",
-      }}
-    >
-      {/* Background (Clean, dark for admin) */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <div className="absolute inset-0 bg-noise opacity-30 mix-blend-overlay" />
-      </div>
-
+    <div className="flex min-h-screen relative bg-paper selection:bg-highlight selection:text-ink">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col min-w-0 relative z-10 lg:ml-[260px] transition-[margin] duration-300">
@@ -209,54 +198,53 @@ export default function AdminDashboard() {
           <div className="max-w-[1400px] mx-auto space-y-8">
             {/* Admin Header */}
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-white mb-2">
+              <h1 className="text-4xl font-serif font-black tracking-tighter text-ink mb-2 uppercase">
                 Database Management
               </h1>
-              <p className="text-sm text-[var(--text-secondary)]">
+              <p className="text-sm font-mono uppercase tracking-widest text-ink-muted">
                 Administer assets, mappings, and raw sentiment records.
               </p>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-4 border-b border-white/10 pb-4">
+            <div className="flex gap-4 border-b border-rule/20 pb-4">
               <button
                 onClick={() => setActiveTab("assets")}
-                className={`text-sm font-medium px-4 py-2 rounded-md transition-colors ${
+                className={`font-mono text-xs uppercase tracking-widest px-4 py-2 transition-colors border-b-2 ${
                   activeTab === "assets"
-                    ? "bg-[var(--brand-primary)] text-white"
-                    : "text-[var(--text-muted)] hover:text-white hover:bg-white/5"
+                    ? "border-signal text-ink font-bold"
+                    : "border-transparent text-ink-muted hover:text-ink hover:bg-highlight/20"
                 }`}
               >
-                Managed Assets (Tickers)
+                Managed Assets
               </button>
-              {/* Mentions tab UI placeholder - can expand later if needed */}
               <button
                 onClick={() => setActiveTab("mentions")}
-                className={`text-sm font-medium px-4 py-2 rounded-md transition-colors ${
+                className={`font-mono text-xs uppercase tracking-widest px-4 py-2 transition-colors border-b-2 ${
                   activeTab === "mentions"
-                    ? "bg-[var(--brand-primary)] text-white"
-                    : "text-[var(--text-muted)] hover:text-white hover:bg-white/5"
+                    ? "border-signal text-ink font-bold"
+                    : "border-transparent text-ink-muted hover:text-ink hover:bg-highlight/20"
                 }`}
               >
-                Raw Mentions & Sentiment
+                Raw Mentions
               </button>
             </div>
 
             {/* Content Area */}
             {activeTab === "assets" && (
-              <GlassPanel className="p-0 overflow-hidden border border-white/10 rounded-xl">
-                <div className="bg-[var(--bg-card)] p-4 flex justify-between items-center border-b border-white/5">
+              <EditorialPanel className="p-0">
+                <div className="p-6 flex justify-between items-center border-b border-rule/10 bg-white">
                   <div className="relative max-w-sm w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-muted" />
                     <input
                       type="text"
                       placeholder="Search tickers..."
-                      className="w-full bg-black/20 border border-white/10 rounded-md py-1.5 pl-9 pr-3 text-sm text-white focus:outline-none focus:border-[var(--brand-primary)] transition-colors"
+                      className="w-full bg-paper border border-rule/20 rounded-none py-2 px-9 font-mono text-sm text-ink focus:outline-none focus:border-ink transition-colors placeholder:text-ink-muted"
                     />
                   </div>
                   <button
                     onClick={handleAddAsset}
-                    className="flex items-center gap-2 bg-[var(--brand-primary)] hover:bg-[#5a52d6] text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors"
+                    className="flex items-center gap-2 bg-ink hover:bg-signal text-paper px-6 py-2 text-xs font-mono uppercase tracking-widest font-bold transition-colors"
                   >
                     <Plus size={16} /> Add Ticker
                   </button>
@@ -264,48 +252,47 @@ export default function AdminDashboard() {
 
                 {loading ? (
                   <div className="p-12 flex justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-[var(--brand-primary)]" />
+                    <Loader2 className="w-8 h-8 animate-spin text-signal" />
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="text-xs uppercase tracking-wider text-[var(--text-muted)] border-b border-white/5 bg-black/10">
-                          <th className="px-6 py-3 font-medium">Ticker</th>
-                          <th className="px-6 py-3 font-medium">
+                        <tr className="font-mono text-[10px] uppercase tracking-widest text-ink-muted border-b border-rule/20 bg-paper">
+                          <th className="px-6 py-4 font-bold">Ticker</th>
+                          <th className="px-6 py-4 font-bold">
                             Company / Asset Name
                           </th>
-                          <th className="px-6 py-3 font-medium">Type</th>
-                          <th className="px-6 py-3 font-medium text-right">
+                          <th className="px-6 py-4 font-bold">Type</th>
+                          <th className="px-6 py-4 font-bold text-right">
                             Actions
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="text-sm divide-y divide-white/5">
+                      <tbody className="bg-white divide-y divide-rule/10">
                         {assets.map((asset) => (
                           <tr
                             key={asset.asset_id}
-                            className="hover:bg-white/[0.02] transition-colors"
+                            className="hover:bg-highlight/10 transition-colors"
                           >
-                            <td className="px-6 py-3 font-bold text-white tracking-wide">
+                            <td className="px-6 py-4 font-bold text-ink data-font tracking-wide">
                               {asset.ticker}
                             </td>
-                            <td className="px-6 py-3 text-[var(--text-secondary)]">
+                            <td className="px-6 py-4 text-ink-muted font-serif text-lg">
                               {asset.asset_name}
                             </td>
-                            <td className="px-6 py-3">
+                            <td className="px-6 py-4">
                               <Badge
                                 variant="neutral"
-                                className="capitalize text-xs px-2 py-0.5"
                               >
                                 {asset.asset_type}
                               </Badge>
                             </td>
-                            <td className="px-6 py-3 text-right">
-                              <div className="flex justify-end gap-2">
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end gap-3">
                                 <button
                                   onClick={() => handleEditAsset(asset)}
-                                  className="p-1.5 text-[var(--text-muted)] hover:text-white hover:bg-white/10 rounded transition-colors"
+                                  className="text-ink-muted hover:text-ink transition-colors"
                                   title="Edit Name"
                                 >
                                   <Edit2 size={16} />
@@ -314,7 +301,7 @@ export default function AdminDashboard() {
                                   onClick={() =>
                                     handleDeleteAsset(asset.asset_id)
                                   }
-                                  className="p-1.5 text-[var(--text-muted)] hover:text-[var(--error)] hover:bg-[var(--error)]/10 rounded transition-colors"
+                                  className="text-ink-muted hover:text-signal transition-colors"
                                   title="Delete Asset"
                                 >
                                   <Trash2 size={16} />
@@ -327,7 +314,7 @@ export default function AdminDashboard() {
                           <tr>
                             <td
                               colSpan={4}
-                              className="text-center py-8 text-[var(--text-muted)]"
+                              className="text-center py-8 font-mono text-sm text-ink-muted"
                             >
                               No assets found in database.
                             </td>
@@ -337,60 +324,60 @@ export default function AdminDashboard() {
                     </table>
                   </div>
                 )}
-              </GlassPanel>
+              </EditorialPanel>
             )}
 
             {activeTab === "mentions" && (
-              <GlassPanel className="p-0 overflow-hidden border border-white/10 rounded-xl">
-                <div className="bg-[var(--bg-card)] p-4 flex justify-between items-center border-b border-white/5">
-                  <h2 className="text-white font-medium">
+              <EditorialPanel className="p-0">
+                <div className="p-6 flex justify-between items-center border-b border-rule/10 bg-white">
+                  <h2 className="text-ink font-serif font-bold uppercase text-lg">
                     Recent Sentiment Records
                   </h2>
-                  <span className="text-xs text-[var(--text-muted)]">
+                  <span className="font-mono text-xs tracking-widest uppercase text-ink-muted">
                     Showing last 50 entries
                   </span>
                 </div>
 
                 <div className="overflow-x-auto max-h-[600px] overflow-y-auto w-full relative">
                   <table className="w-full text-left border-collapse min-w-[700px]">
-                    <thead className="sticky top-0 bg-[var(--bg-card)] z-10">
-                      <tr className="text-xs uppercase tracking-wider text-[var(--text-muted)] border-b border-white/5">
-                        <th className="px-6 py-3 font-medium bg-[#0f1115]">
+                    <thead className="sticky top-0 bg-paper z-10 box-border border-b border-rule/20">
+                      <tr className="font-mono text-[10px] uppercase tracking-widest text-ink-muted">
+                        <th className="px-6 py-4 font-bold">
                           Date (UTC)
                         </th>
-                        <th className="px-6 py-3 font-medium bg-[#0f1115]">
+                        <th className="px-6 py-4 font-bold">
                           Ticker
                         </th>
-                        <th className="px-6 py-3 font-medium text-right bg-[#0f1115]">
+                        <th className="px-6 py-4 font-bold text-right">
                           Sentiment
                         </th>
-                        <th className="px-6 py-3 font-medium text-right bg-[#0f1115]">
+                        <th className="px-6 py-4 font-bold text-right">
                           Conf.
                         </th>
-                        <th className="px-6 py-3 font-medium bg-[#0f1115]">
+                        <th className="px-6 py-4 font-bold">
                           Source
                         </th>
-                        <th className="px-6 py-3 font-medium text-right bg-[#0f1115]">
+                        <th className="px-6 py-4 font-bold text-right">
                           Action
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="text-sm divide-y divide-white/5 relative z-0 bg-[#0f1115]/30">
+                    <tbody className="bg-white divide-y divide-rule/10 relative z-0">
                       {mentions.map((mention) => (
                         <tr
                           key={mention.mention_id}
-                          className="hover:bg-white/[0.04] transition-colors"
+                          className="hover:bg-highlight/10 transition-colors"
                         >
-                          <td className="px-6 py-3 text-[var(--text-secondary)] whitespace-nowrap">
+                          <td className="px-6 py-4 text-ink-muted whitespace-nowrap data-font">
                             {new Date(mention.created_at).toLocaleString([], {
                               dateStyle: "short",
                               timeStyle: "short",
                             })}
                           </td>
-                          <td className="px-6 py-3 font-bold text-white whitespace-nowrap">
+                          <td className="px-6 py-4 font-bold text-ink data-font whitespace-nowrap">
                             {mention.assets?.ticker || "Unknown"}
                           </td>
-                          <td className="px-6 py-3 text-right">
+                          <td className="px-6 py-4 text-right">
                             <Badge
                               variant={
                                 mention.sentiment_score > 0.2
@@ -399,24 +386,24 @@ export default function AdminDashboard() {
                                     ? "error"
                                     : "neutral"
                               }
-                              className="px-2 py-0.5 whitespace-nowrap"
+                              className="whitespace-nowrap"
                             >
                               {mention.sentiment_score > 0 ? "+" : ""}
                               {mention.sentiment_score.toFixed(3)}
                             </Badge>
                           </td>
-                          <td className="px-6 py-3 text-[var(--text-secondary)] tabular-nums text-right">
+                          <td className="px-6 py-4 text-ink-muted data-font text-right">
                             {(mention.confidence_level * 100).toFixed(0)}%
                           </td>
-                          <td className="px-6 py-3 text-[var(--text-muted)] capitalize whitespace-nowrap">
+                          <td className="px-6 py-4 text-ink-muted font-mono text-xs uppercase whitespace-nowrap">
                             {mention.platforms?.name || "Unknown"}
                           </td>
-                          <td className="px-6 py-3 text-right whitespace-nowrap">
+                          <td className="px-6 py-4 text-right whitespace-nowrap">
                             <button
                               onClick={() =>
                                 handleDeleteMention(mention.mention_id)
                               }
-                              className="p-1.5 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--error)] hover:bg-[var(--error)]/10 rounded transition-colors"
+                              className="inline-flex items-center justify-center text-ink-muted hover:text-signal transition-colors"
                               title="Delete Record"
                             >
                               <Trash2 size={16} />
@@ -428,7 +415,7 @@ export default function AdminDashboard() {
                         <tr>
                           <td
                             colSpan={6}
-                            className="text-center py-8 text-[var(--text-muted)]"
+                            className="text-center py-8 font-mono text-sm text-ink-muted"
                           >
                             No mentions found.
                           </td>
@@ -437,7 +424,7 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
-              </GlassPanel>
+              </EditorialPanel>
             )}
           </div>
         </main>

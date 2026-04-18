@@ -25,16 +25,6 @@
   --signal: #FF4D30;
   --highlight: #E6FF00;
   --rule: #333333;
-
-  /* Legacy aliases for backward compatibility */
-  --bg-app: var(--paper);
-  --bg-card: #FFFFFF;
-  --bg-shell: var(--paper);
-  --text-primary: var(--ink);
-  --text-secondary: var(--ink-muted);
-  --border-subtle: #E5E1D8;
-  --radius-card: 0px;
-  --radius-btn: 0px;
 }
 
 body {
