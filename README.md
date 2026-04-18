@@ -95,7 +95,7 @@ Configure your credentials:
 Install the required Python packages:
 ```bash
 # Recommendation: use a virtual environment
-pip install asyncpraw asyncprawcore supabase python-dotenv pandas
+pip install -r requirements.txt
 ```
 
 ### 3. Database Initialization
