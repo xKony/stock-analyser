@@ -1,6 +1,6 @@
 "use client";
 
-import { StatsCards } from "@/components/Dashboard/StatsCards";
+import { StatsCards } from "@/components/Dashboard/StatsCards/index";
 import { SentimentChart } from "@/components/Dashboard/SentimentChart";
 import { TopStocksTable } from "@/components/Dashboard/TopStocksTable";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
