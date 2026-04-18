@@ -24,6 +24,7 @@ import math
 import random
 import sys
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 
@@ -42,28 +43,40 @@ log = get_logger(__name__)
 # Seed configuration
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class AssetConfig:
+    ticker: str
+    asset_type: str
+    asset_name: str
+    bias: float
+
+
+@dataclass(frozen=True)
+class PlatformConfig:
+    name: str
+
+
 SEED_BATCH_SIZE: Final[int] = 500  # rows per Supabase batch insert
 
-PLATFORMS: Final[list[str]] = [
-    "Reddit/stocks",
-    "Reddit/wallstreetbets",
-    "Reddit/investing",
+PLATFORMS: Final[list[PlatformConfig]] = [
+    PlatformConfig("Reddit/stocks"),
+    PlatformConfig("Reddit/wallstreetbets"),
+    PlatformConfig("Reddit/investing"),
 ]
 
-ASSETS: Final[list[tuple[str, str, str, float]]] = [
-    # (ticker, asset_type, asset_name, bias)
+ASSETS: Final[list[AssetConfig]] = [
     # bias: gentle directional drift so charts look interesting
-    ("AAPL",  "Stock",     "Apple Inc.",         +0.02),
-    ("TSLA",  "Stock",     "Tesla Inc.",          -0.03),
-    ("NVDA",  "Stock",     "NVIDIA Corporation",  +0.04),
-    ("MSFT",  "Stock",     "Microsoft Corporation",+0.02),
-    ("AMZN",  "Stock",     "Amazon.com Inc.",     +0.01),
-    ("GOOGL", "Stock",     "Alphabet Inc.",        0.00),
-    ("AMD",   "Stock",     "Advanced Micro Devices",-0.01),
-    ("META",  "Stock",     "Meta Platforms Inc.", +0.03),
-    ("BTC",   "Crypto",    "Bitcoin",             +0.05),
-    ("ETH",   "Crypto",    "Ethereum",            +0.03),
-    ("XAU",   "Commodity", "Gold",               -0.01),
+    AssetConfig("AAPL",  "Stock",     "Apple Inc.",         +0.02),
+    AssetConfig("TSLA",  "Stock",     "Tesla Inc.",          -0.03),
+    AssetConfig("NVDA",  "Stock",     "NVIDIA Corporation",  +0.04),
+    AssetConfig("MSFT",  "Stock",     "Microsoft Corporation",+0.02),
+    AssetConfig("AMZN",  "Stock",     "Amazon.com Inc.",     +0.01),
+    AssetConfig("GOOGL", "Stock",     "Alphabet Inc.",        0.00),
+    AssetConfig("AMD",   "Stock",     "Advanced Micro Devices",-0.01),
+    AssetConfig("META",  "Stock",     "Meta Platforms Inc.", +0.03),
+    AssetConfig("BTC",   "Crypto",    "Bitcoin",             +0.05),
+    AssetConfig("ETH",   "Crypto",    "Ethereum",            +0.03),
+    AssetConfig("XAU",   "Commodity", "Gold",               -0.01),
 ]
 
 # Samples per ticker per platform per day
@@ -153,37 +166,37 @@ def seed(days: int = 30, clear: bool = False) -> None:
 
     # ---- Resolve / create platforms ----------------------------------------
     platform_ids: dict[str, int] = {}
-    for name in PLATFORMS:
+    for platform in PLATFORMS:
         pid = get_or_create(
             client,
             table="platforms",
-            search={"name": name},
-            data={"name": name},
+            search={"name": platform.name},
+            data={"name": platform.name},
             id_col="platform_id",
         )
         if pid is None:
-            log.error(f"Could not resolve platform '{name}'. Skipping.")
+            log.error(f"Could not resolve platform '{platform.name}'. Skipping.")
             continue
-        platform_ids[name] = pid
-        log.info(f"  Platform '{name}' -> id={pid}")
+        platform_ids[platform.name] = pid
+        log.info(f"  Platform '{platform.name}' -> id={pid}")
 
     # ---- Resolve / create assets -------------------------------------------
     asset_ids: dict[str, int] = {}
     asset_biases: dict[str, float] = {}
-    for ticker, asset_type, asset_name, bias in ASSETS:
+    for asset in ASSETS:
         aid = get_or_create(
             client,
             table="assets",
-            search={"ticker": ticker, "asset_type": asset_type},
-            data={"ticker": ticker, "asset_type": asset_type, "asset_name": asset_name},
+            search={"ticker": asset.ticker, "asset_type": asset.asset_type},
+            data={"ticker": asset.ticker, "asset_type": asset.asset_type, "asset_name": asset.asset_name},
             id_col="asset_id",
         )
         if aid is None:
-            log.error(f"Could not resolve asset '{ticker}'. Skipping.")
+            log.error(f"Could not resolve asset '{asset.ticker}'. Skipping.")
             continue
-        asset_ids[ticker] = aid
-        asset_biases[ticker] = bias
-        log.info(f"  Asset '{ticker}' ({asset_type}) -> id={aid}")
+        asset_ids[asset.ticker] = aid
+        asset_biases[asset.ticker] = asset.bias
+        log.info(f"  Asset '{asset.ticker}' ({asset.asset_type}) -> id={aid}")
 
     # ---- Generate mentions --------------------------------------------------
     now = datetime.now(timezone.utc)
