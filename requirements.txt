@@ -1,0 +1,9 @@
+asyncpraw
+asyncprawcore
+supabase
+python-dotenv
+pandas
+mistralai
+google-genai
+nordvpn-switcher-pro
+postgrest
