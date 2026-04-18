@@ -194,6 +194,8 @@ class SupabaseClient:
                 )
                 continue
 
+            created_at = record.created_at or datetime.now(timezone.utc)
+
             batch_mentions.append({
                 COL_ASSET_ID: asset_id,
                 COL_PLATFORM_ID: platform_id,
@@ -202,7 +204,7 @@ class SupabaseClient:
                 "source_text_id": record.source_text_id,
                 "source_text_snippet": record.source_text_snippet,
                 "key_rationale": record.key_rationale,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": created_at.isoformat(),
             })
 
         if not batch_mentions:
@@ -216,6 +218,20 @@ class SupabaseClient:
             )
         except Exception as e:
             log.error(f"Failed to execute batch insert: {e}")
+
+    def clear_mentions(self) -> None:
+        """Wipe all existing records from the asset_mentions table.
+
+        Use with caution — this is typically for seeding/resetting dev environments.
+        """
+        log.warning(f"Clearing all data from '{TABLE_MENTIONS}'...")
+        try:
+            # Supabase delete() requires a filter to be safe; use 'gt' on PK > 0
+            self.client.table(TABLE_MENTIONS).delete().gt("mention_id", 0).execute()
+            log.info(f"Successfully cleared table '{TABLE_MENTIONS}'.")
+        except Exception as e:
+            log.error(f"Failed to clear table '{TABLE_MENTIONS}': {e}")
+            raise
 
     # ------------------------------------------------------------------
     # Post deduplication

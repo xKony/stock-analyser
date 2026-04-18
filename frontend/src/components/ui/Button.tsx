@@ -13,22 +13,21 @@ interface ButtonProps extends Omit<HTMLMotionProps<"button">, "children"> {
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary: [
-    "text-white font-semibold text-sm",
-    "rounded-[var(--r-btn)] px-5 py-2.5",
-    "shadow-[var(--shadow-cta)]",
-    "hover:brightness-110",
+    "bg-ink text-paper font-mono uppercase tracking-widest text-[11px] font-bold",
+    "rounded-none px-6 py-3",
+    "border border-transparent",
+    "hover:bg-signal hover:text-white",
   ].join(" "),
   ghost: [
-    "bg-white/[0.06] border border-white/[0.12] text-[var(--text-body)]",
-    "font-medium text-sm",
-    "rounded-[var(--r-btn)] px-5 py-2.5",
-    "hover:bg-white/[0.10]",
+    "bg-paper border border-rule text-ink font-mono uppercase tracking-widest text-[11px] font-bold",
+    "rounded-none px-6 py-3",
+    "hover:bg-highlight hover:border-ink",
   ].join(" "),
   inline: [
-    "bg-[var(--brand-glow)] border border-[rgba(108,99,255,0.4)] text-[var(--brand-primary)]",
-    "font-medium text-[13px]",
-    "rounded-[var(--r-icon)] px-[14px] py-[6px]",
-    "hover:bg-[var(--brand-glow)] hover:brightness-110",
+    "bg-transparent text-ink font-mono uppercase tracking-widest text-[10px] font-bold relative",
+    "rounded-none px-3 py-1.5",
+    "hover:bg-highlight/20",
+    "before:absolute before:bottom-0 before:left-0 before:w-full before:h-px before:bg-ink before:opacity-30 hover:before:opacity-100",
   ].join(" "),
 };
 
@@ -40,16 +39,10 @@ export function Button({
 }: ButtonProps) {
   return (
     <motion.button
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.97 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      style={
-        variant === "primary"
-          ? { background: "var(--brand-gradient)" }
-          : undefined
-      }
+      whileHover={{ scale: 1 }} // Remove scaling bounce for strict editorial feel
+      whileTap={{ scale: 0.98 }}
       className={cn(
-        "inline-flex items-center justify-center gap-2 cursor-pointer transition-[filter,background-color] duration-200",
+        "inline-flex items-center justify-center gap-2 cursor-pointer transition-colors duration-200",
         variantStyles[variant],
         className,
       )}

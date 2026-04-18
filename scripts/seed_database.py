@@ -24,16 +24,18 @@ import math
 import random
 import sys
 import os
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+from utils.logger import get_logger
 
 # ---------------------------------------------------------------------------
 # Bootstrap path so we can import from the project root
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from supabase import create_client  # noqa: E402
-from config import SUPABASE_URL, SUPABASE_KEY  # noqa: E402
-from utils.logger import get_logger  # noqa: E402
+from data.models import SentimentRecord  # noqa: E402
+from database.supabase_client import SupabaseClient  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -41,32 +43,43 @@ log = get_logger(__name__)
 # Seed configuration
 # ---------------------------------------------------------------------------
 
-SEED_BATCH_SIZE = 500  # rows per Supabase batch insert
+@dataclass(frozen=True)
+class AssetConfig:
+    ticker: str
+    asset_type: str
+    asset_name: str
+    bias: float
 
-PLATFORMS = [
-    "Reddit/stocks",
-    "Reddit/wallstreetbets",
-    "Reddit/investing",
+
+@dataclass(frozen=True)
+class PlatformConfig:
+    name: str
+
+
+PLATFORMS: Final[list[PlatformConfig]] = [
+    PlatformConfig("Reddit/stocks"),
+    PlatformConfig("Reddit/wallstreetbets"),
+    PlatformConfig("Reddit/investing"),
 ]
 
-ASSETS = [
-    # (ticker, asset_type, asset_name, bias)
+ASSETS: Final[list[AssetConfig]] = [
     # bias: gentle directional drift so charts look interesting
-    ("AAPL",  "Stock",     "Apple Inc.",         +0.02),
-    ("TSLA",  "Stock",     "Tesla Inc.",          -0.03),
-    ("NVDA",  "Stock",     "NVIDIA Corporation",  +0.04),
-    ("MSFT",  "Stock",     "Microsoft Corporation",+0.02),
-    ("AMZN",  "Stock",     "Amazon.com Inc.",     +0.01),
-    ("GOOGL", "Stock",     "Alphabet Inc.",        0.00),
-    ("AMD",   "Stock",     "Advanced Micro Devices",-0.01),
-    ("META",  "Stock",     "Meta Platforms Inc.", +0.03),
-    ("BTC",   "Crypto",    "Bitcoin",             +0.05),
-    ("ETH",   "Crypto",    "Ethereum",            +0.03),
-    ("XAU",   "Commodity", "Gold",               -0.01),
+    AssetConfig("AAPL",  "Stock",     "Apple Inc.",         +0.02),
+    AssetConfig("TSLA",  "Stock",     "Tesla Inc.",          -0.03),
+    AssetConfig("NVDA",  "Stock",     "NVIDIA Corporation",  +0.04),
+    AssetConfig("MSFT",  "Stock",     "Microsoft Corporation",+0.02),
+    AssetConfig("AMZN",  "Stock",     "Amazon.com Inc.",     +0.01),
+    AssetConfig("GOOGL", "Stock",     "Alphabet Inc.",        0.00),
+    AssetConfig("AMD",   "Stock",     "Advanced Micro Devices",-0.01),
+    AssetConfig("META",  "Stock",     "Meta Platforms Inc.", +0.03),
+    AssetConfig("BTC",   "Crypto",    "Bitcoin",             +0.05),
+    AssetConfig("ETH",   "Crypto",    "Ethereum",            +0.03),
+    AssetConfig("XAU",   "Commodity", "Gold",               -0.01),
 ]
+
 
 # Samples per ticker per platform per day
-SAMPLES_PER_DAY = 3
+SAMPLES_PER_DAY: Final[int] = 3
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +102,7 @@ def biased_random_walk(
     """
     if start is None:
         start = random.uniform(-0.15, 0.15)
-    values = [start]
+    values: list[float] = [start]
     for _ in range(steps - 1):
         delta = bias + random.gauss(0, volatility)
         next_val = max(clamp_min, min(clamp_max, values[-1] + delta))
@@ -104,136 +117,70 @@ def confidence_from_score(score: float) -> float:
     return round(max(0.0, min(1.0, 0.4 + base * 0.55 + noise)), 4)
 
 
-def get_or_create(client, table: str, search: dict, data: dict, id_col: str) -> int | None:
-    """Fetch existing row or insert a new one; returns the id."""
-    try:
-        q = client.table(table).select("*")
-        for k, v in search.items():
-            q = q.eq(k, v)
-        resp = q.execute()
-        if resp.data:
-            return resp.data[0][id_col]
-
-        resp = client.table(table).insert(data).execute()
-        if resp.data:
-            return resp.data[0][id_col]
-    except Exception as exc:
-        log.error(f"get_or_create({table}) failed: {exc}")
-    return None
-
-
 # ---------------------------------------------------------------------------
 # Core seed logic
 # ---------------------------------------------------------------------------
 
-def clear_seed_data(client) -> None:
-    """Delete all existing `asset_mentions` rows (cascades OK with schema)."""
-    log.info("Clearing existing asset_mentions...")
-    try:
-        # Delete everything — Supabase requires a filter; use "> 0" on PK
-        client.table("asset_mentions").delete().gt("mention_id", 0).execute()
-        log.info("asset_mentions cleared.")
-    except Exception as exc:
-        log.error(f"Failed to clear asset_mentions: {exc}")
+def generate_records(
+    platform: PlatformConfig,
+    assets: list[AssetConfig],
+    days: int,
+) -> list[SentimentRecord]:
+    """Generate synthetic historical records for a specific platform."""
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=days)
+    total_steps = days * SAMPLES_PER_DAY
+
+    records: list[SentimentRecord] = []
+
+    for asset in assets:
+        # Each ticker×platform pair gets its own independent walk
+        walk = biased_random_walk(
+            steps=total_steps,
+            bias=asset.bias,
+            volatility=0.18 if asset.asset_type == "Crypto" else 0.10,
+        )
+
+        for step_idx, score in enumerate(walk):
+            # Distribute samples across the date range
+            days_offset = step_idx / SAMPLES_PER_DAY
+            hours_offset = (step_idx % SAMPLES_PER_DAY) * (24 // SAMPLES_PER_DAY)
+            ts = start_date + timedelta(days=days_offset, hours=hours_offset)
+
+            # Add small intra-day jitter (±15 min)
+            ts += timedelta(minutes=random.randint(-15, 15))
+
+            records.append(SentimentRecord(
+                symbol=asset.ticker,
+                sentiment_score=score,
+                sentiment_confidence=confidence_from_score(score),
+                sentiment_label="BUY" if score > 0.3 else ("SELL" if score < -0.3 else "NEUTRAL"),
+                key_rationale=f"Synthetic data generated for {asset.ticker}",
+                created_at=ts,
+                source_name=platform.name.lower()
+            ))
+    
+    return records
 
 
 def seed(days: int = 30, clear: bool = False) -> None:
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        log.critical("SUPABASE_URL / SUPABASE_KEY not set. Check your .env file.")
-        sys.exit(1)
-
-    client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    log.info("Connected to Supabase.")
+    db = SupabaseClient()
+    log.info(f"Connected to Supabase. Seeding {days} days of data.")
 
     if clear:
-        clear_seed_data(client)
+        db.clear_mentions()
 
-    # ---- Resolve / create platforms ----------------------------------------
-    platform_ids: dict[str, int] = {}
-    for name in PLATFORMS:
-        pid = get_or_create(
-            client,
-            table="platforms",
-            search={"name": name},
-            data={"name": name},
-            id_col="platform_id",
-        )
-        if pid is None:
-            log.error(f"Could not resolve platform '{name}'. Skipping.")
-            continue
-        platform_ids[name] = pid
-        log.info(f"  Platform '{name}' -> id={pid}")
+    # Pre-populate assets if they don't exist
+    # SupabaseClient.insert_analysis already handles this if we pass records,
+    # but we might want to ensure names are correct.
+    
+    for platform in PLATFORMS:
+        log.info(f"Generating and inserting records for platform: {platform.name}")
+        records = generate_records(platform, ASSETS, days)
+        random.shuffle(records)  # mix up insertion order for realism
+        db.insert_analysis(records, platform.name)
 
-    # ---- Resolve / create assets -------------------------------------------
-    asset_ids: dict[str, int] = {}
-    asset_biases: dict[str, float] = {}
-    for ticker, asset_type, asset_name, bias in ASSETS:
-        aid = get_or_create(
-            client,
-            table="assets",
-            search={"ticker": ticker, "asset_type": asset_type},
-            data={"ticker": ticker, "asset_type": asset_type, "asset_name": asset_name},
-            id_col="asset_id",
-        )
-        if aid is None:
-            log.error(f"Could not resolve asset '{ticker}'. Skipping.")
-            continue
-        asset_ids[ticker] = aid
-        asset_biases[ticker] = bias
-        log.info(f"  Asset '{ticker}' ({asset_type}) -> id={aid}")
-
-    # ---- Generate mentions --------------------------------------------------
-    now = datetime.now(timezone.utc)
-    start_date = now - timedelta(days=days)
-    total_steps = days * SAMPLES_PER_DAY  # walk length per ticker/platform combo
-
-    all_rows: list[dict] = []
-
-    for ticker, asset_id in asset_ids.items():
-        bias = asset_biases[ticker]
-        for platform_name, platform_id in platform_ids.items():
-            # Each ticker×platform pair gets its own independent walk
-            walk = biased_random_walk(
-                steps=total_steps,
-                bias=bias,
-                # Crypto is more volatile
-                volatility=0.18 if ticker in ("BTC", "ETH") else 0.10,
-            )
-
-            for step_idx, score in enumerate(walk):
-                # Distribute samples across the date range
-                days_offset = step_idx / SAMPLES_PER_DAY
-                hours_offset = (step_idx % SAMPLES_PER_DAY) * (24 // SAMPLES_PER_DAY)
-                ts = start_date + timedelta(days=days_offset, hours=hours_offset)
-
-                # Add small intra-day jitter (±15 min)
-                ts += timedelta(minutes=random.randint(-15, 15))
-
-                all_rows.append({
-                    "asset_id": asset_id,
-                    "platform_id": platform_id,
-                    "sentiment_score": score,
-                    "confidence_level": confidence_from_score(score),
-                    "created_at": ts.isoformat(),
-                })
-
-    # ---- Batch insert -------------------------------------------------------
-    random.shuffle(all_rows)  # mix up insertion order for realistic timestamps
-    total = len(all_rows)
-    inserted = 0
-
-    log.info(f"Inserting {total} mention rows in batches of {SEED_BATCH_SIZE}...")
-    for i in range(0, total, SEED_BATCH_SIZE):
-        batch = all_rows[i : i + SEED_BATCH_SIZE]
-        try:
-            client.table("asset_mentions").insert(batch).execute()
-            inserted += len(batch)
-            log.info(f"  Inserted {inserted}/{total} rows...")
-        except Exception as exc:
-            log.error(f"Batch insert failed at offset {i}: {exc}")
-
-    log.info(f"Done. {inserted} rows seeded across {len(asset_ids)} assets and {len(platform_ids)} platforms.")
-    log.info(f"Date range: {start_date.date()} → {now.date()} ({days} days)")
+    log.info("Seeding complete.")
 
 
 # ---------------------------------------------------------------------------
