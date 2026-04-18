@@ -45,7 +45,7 @@ class TestEdgeCases(unittest.TestCase):
         }]
         result = validate_stock_sentiment_json(data)
         assert len(result) == 1
-        assert result[0]["symbol"] == "AAPL"
+        assert result[0].symbol == "AAPL"
         print("Passed: validate_stock_sentiment_json with valid data")
 
     def test_validate_stock_sentiment_json_wraps_single_dict(self) -> None:
@@ -60,7 +60,7 @@ class TestEdgeCases(unittest.TestCase):
         }
         result = validate_stock_sentiment_json(data)
         assert len(result) == 1
-        assert result[0]["symbol"] == "TSLA"
+        assert result[0].symbol == "TSLA"
         print("Passed: validate_stock_sentiment_json wraps single dict")
 
     def test_data_handler_clean_text(self) -> None:

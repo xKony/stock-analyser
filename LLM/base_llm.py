@@ -40,14 +40,15 @@ def load_prompt(prompt_path: str = PROMPT_FILE) -> str:
         raise
 
 
-def validate_stock_sentiment_json(data: Any) -> List[Dict[str, Any]]:
+def validate_stock_sentiment_json(data: Any) -> List[SentimentRecord]:
     """Validates that *data* is a list of well-formed stock-sentiment dicts.
 
     Handles the case where the LLM returns a single object instead of a list
     by wrapping it automatically.
 
     Returns:
-        A list containing only the items that pass all validation checks.
+        A list of :class:`~data.models.SentimentRecord` objects that pass all
+        validation checks.
     """
     if isinstance(data, dict):
         log.warning("Received single dict from LLM; wrapping in list.")
@@ -65,7 +66,7 @@ def validate_stock_sentiment_json(data: Any) -> List[Dict[str, Any]]:
         "key_rationale",
     }
 
-    valid_items: List[Dict[str, Any]] = []
+    records: List[SentimentRecord] = []
 
     for item in data:
         if not isinstance(item, dict):
@@ -76,19 +77,14 @@ def validate_stock_sentiment_json(data: Any) -> List[Dict[str, Any]]:
             continue
 
         try:
-            score = float(item["sentiment_score"])
-            if not (-1.0 <= score <= 1.0):
-                log.warning(f"Sentiment score out of range: {score}")
+            # We don't perform deep range validation here because SentimentRecord's
+            # __post_init__ already does it. We just need to catch errors during
+            # coercion and initialization.
+            records.append(SentimentRecord.from_dict(item))
+        except (KeyError, ValueError, TypeError) as exc:
+            log.warning(f"Dropping item that failed SentimentRecord coercion: {exc} — {item}")
 
-            conf = float(item["sentiment_confidence"])
-            if not (0.0 <= conf <= 1.0):
-                log.warning(f"Sentiment confidence out of range: {conf}")
-
-            valid_items.append(item)
-        except (ValueError, TypeError):
-            log.warning(f"Invalid numeric values in item: {item}")
-
-    return valid_items
+    return records
 
 
 # ---------------------------------------------------------------------------
@@ -183,15 +179,7 @@ class BaseLLM(ABC):
                 clean_str = content_str.strip()
                 
             data = json.loads(clean_str)
-            valid_data = validate_stock_sentiment_json(data)
-
-            # Coerce each validated dict into the canonical SentimentRecord type.
-            records: List[SentimentRecord] = []
-            for item in valid_data:
-                try:
-                    records.append(SentimentRecord.from_dict(item))
-                except (KeyError, ValueError, TypeError) as exc:
-                    log.warning(f"Dropping item that failed SentimentRecord coercion: {exc} — {item}")
+            records = validate_stock_sentiment_json(data)
 
             log.info(f"Produced {len(records)} SentimentRecord(s) from {self.provider_name}.")
             return records
