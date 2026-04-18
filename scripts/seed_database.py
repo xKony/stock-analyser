@@ -25,13 +25,14 @@ import random
 import sys
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Any, Final
 
 # ---------------------------------------------------------------------------
 # Bootstrap path so we can import from the project root
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from supabase import create_client  # noqa: E402
+from supabase import Client, create_client  # noqa: E402
 from config import SUPABASE_URL, SUPABASE_KEY  # noqa: E402
 from utils.logger import get_logger  # noqa: E402
 
@@ -41,15 +42,15 @@ log = get_logger(__name__)
 # Seed configuration
 # ---------------------------------------------------------------------------
 
-SEED_BATCH_SIZE = 500  # rows per Supabase batch insert
+SEED_BATCH_SIZE: Final[int] = 500  # rows per Supabase batch insert
 
-PLATFORMS = [
+PLATFORMS: Final[list[str]] = [
     "Reddit/stocks",
     "Reddit/wallstreetbets",
     "Reddit/investing",
 ]
 
-ASSETS = [
+ASSETS: Final[list[tuple[str, str, str, float]]] = [
     # (ticker, asset_type, asset_name, bias)
     # bias: gentle directional drift so charts look interesting
     ("AAPL",  "Stock",     "Apple Inc.",         +0.02),
@@ -66,7 +67,7 @@ ASSETS = [
 ]
 
 # Samples per ticker per platform per day
-SAMPLES_PER_DAY = 3
+SAMPLES_PER_DAY: Final[int] = 3
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +90,7 @@ def biased_random_walk(
     """
     if start is None:
         start = random.uniform(-0.15, 0.15)
-    values = [start]
+    values: list[float] = [start]
     for _ in range(steps - 1):
         delta = bias + random.gauss(0, volatility)
         next_val = max(clamp_min, min(clamp_max, values[-1] + delta))
@@ -104,7 +105,9 @@ def confidence_from_score(score: float) -> float:
     return round(max(0.0, min(1.0, 0.4 + base * 0.55 + noise)), 4)
 
 
-def get_or_create(client, table: str, search: dict, data: dict, id_col: str) -> int | None:
+def get_or_create(
+    client: Client, table: str, search: dict[str, Any], data: dict[str, Any], id_col: str
+) -> int | None:
     """Fetch existing row or insert a new one; returns the id."""
     try:
         q = client.table(table).select("*")
@@ -112,11 +115,11 @@ def get_or_create(client, table: str, search: dict, data: dict, id_col: str) -> 
             q = q.eq(k, v)
         resp = q.execute()
         if resp.data:
-            return resp.data[0][id_col]
+            return int(resp.data[0][id_col])
 
         resp = client.table(table).insert(data).execute()
         if resp.data:
-            return resp.data[0][id_col]
+            return int(resp.data[0][id_col])
     except Exception as exc:
         log.error(f"get_or_create({table}) failed: {exc}")
     return None
@@ -126,7 +129,7 @@ def get_or_create(client, table: str, search: dict, data: dict, id_col: str) -> 
 # Core seed logic
 # ---------------------------------------------------------------------------
 
-def clear_seed_data(client) -> None:
+def clear_seed_data(client: Client) -> None:
     """Delete all existing `asset_mentions` rows (cascades OK with schema)."""
     log.info("Clearing existing asset_mentions...")
     try:
